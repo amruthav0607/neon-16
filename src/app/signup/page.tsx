@@ -38,103 +38,101 @@ export default function SignupPage() {
     }
 
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 py-12 sm:px-6 lg:px-8">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    Create a new account
-                </h2>
-            </div>
+        <div className="min-h-screen bg-[#fafafa] flex items-center justify-center p-6 font-[Inter,sans-serif]">
+            <div className="w-full max-w-lg">
+                <div className="bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-[#eee] overflow-hidden">
+                    <div className="p-10 md:p-14">
+                        <header className="mb-10 text-center">
+                            <h1 className="text-4xl font-black text-[#111] tracking-tight mb-3">Create Account</h1>
+                            <p className="text-[#888] text-sm font-medium">Join our exclusive business network</p>
+                        </header>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white px-4 py-8 shadow sm:rounded-lg sm:px-10">
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div>
-                            <label
-                                htmlFor="name"
-                                className="block text-sm font-medium text-gray-700"
-                            >
-                                Full Name
-                            </label>
-                            <div className="mt-1">
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor="name"
+                                    className="text-[11px] font-black text-[#bbb] uppercase tracking-widest pl-1"
+                                >
+                                    Full Identity
+                                </label>
                                 <input
                                     id="name"
                                     name="name"
                                     type="text"
                                     required
-                                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    placeholder="John Doe"
+                                    className="w-full px-6 py-4 bg-[#f9f9f9] border border-[#eee] rounded-2xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none"
                                 />
                             </div>
-                        </div>
 
-                        <div>
-                            <label
-                                htmlFor="email"
-                                className="block text-sm font-medium text-gray-700"
-                            >
-                                Email address
-                            </label>
-                            <div className="mt-1">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor="email"
+                                    className="text-[11px] font-black text-[#bbb] uppercase tracking-widest pl-1"
+                                >
+                                    Work Email
+                                </label>
                                 <input
                                     id="email"
                                     name="email"
                                     type="email"
-                                    autoComplete="email"
                                     required
-                                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    placeholder="name@company.com"
+                                    className="w-full px-6 py-4 bg-[#f9f9f9] border border-[#eee] rounded-2xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none"
                                 />
                             </div>
-                        </div>
 
-                        <div>
-                            <label
-                                htmlFor="password"
-                                className="block text-sm font-medium text-gray-700"
-                            >
-                                Password
-                            </label>
-                            <div className="mt-1">
+                            <div className="space-y-2">
+                                <label
+                                    htmlFor="password"
+                                    className="text-[11px] font-black text-[#bbb] uppercase tracking-widest pl-1"
+                                >
+                                    Access Key
+                                </label>
                                 <input
                                     id="password"
                                     name="password"
                                     type="password"
-                                    autoComplete="new-password"
                                     required
-                                    className="block w-full appearance-none rounded-md border border-gray-300 px-3 py-2 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-indigo-500 sm:text-sm"
+                                    placeholder="Minimum 6 characters"
+                                    className="w-full px-6 py-4 bg-[#f9f9f9] border border-[#eee] rounded-2xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none"
                                 />
                             </div>
-                        </div>
 
-                        <div>
                             <button
                                 type="submit"
                                 disabled={loading}
-                                className="flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
+                                className="w-full py-5 bg-[#111] text-white rounded-2xl font-bold text-sm hover:bg-[#333] transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/10 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
                             >
-                                {loading ? 'Creating account...' : 'Sign up'}
+                                {loading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        <span>Proccessing...</span>
+                                    </>
+                                ) : 'Register Account'}
                             </button>
-                        </div>
-                        {error && (
-                            <div className="text-red-500 text-sm text-center">
-                                {error}
-                            </div>
-                        )}
-                        <div className="mt-6">
-                            <div className="relative">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-gray-300" />
+
+                            {error && (
+                                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-shake">
+                                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                    <p className="text-xs font-bold text-red-600 uppercase tracking-tighter">{error}</p>
                                 </div>
-                                <div className="relative flex justify-center text-sm">
-                                    <span className="bg-white px-2 text-gray-500">Or</span>
-                                </div>
-                            </div>
-                            <div className="mt-6 flex justify-center text-sm">
-                                <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
-                                    Already have an account? Sign in
+                            )}
+                        </form>
+
+                        <div className="mt-12 pt-8 border-t border-[#f5f5f5] text-center">
+                            <p className="text-sm text-[#888]">
+                                Already a member?{' '}
+                                <Link href="/login" className="text-indigo-600 font-bold hover:text-indigo-400 transition-colors">
+                                    Sign in instead
                                 </Link>
-                            </div>
+                            </p>
                         </div>
-                    </form>
+                    </div>
                 </div>
+                <p className="mt-10 text-center text-[10px] font-bold text-[#ddd] uppercase tracking-[0.3em]">
+                    Data Encrypted & Securely Managed
+                </p>
             </div>
         </div>
     );

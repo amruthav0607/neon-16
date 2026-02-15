@@ -11,11 +11,15 @@ export const authConfig = {
             const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
             const isOnAdmin = nextUrl.pathname.startsWith('/admin');
 
-            if (isOnDashboard || isOnAdmin) {
+            if (isOnAdmin) {
+                if (isLoggedIn && auth.user.role === 'admin') return true;
+                return false; // Redirect if not admin
+            }
+
+            if (isOnDashboard) {
                 if (isLoggedIn) return true;
-                return false; // Redirect unauthenticated users to login page
+                return false;
             } else if (isLoggedIn) {
-                // Redirect logged-in users away from login/signup pages
                 if (nextUrl.pathname === '/login' || nextUrl.pathname === '/signup') {
                     return Response.redirect(new URL('/dashboard', nextUrl));
                 }
@@ -23,14 +27,16 @@ export const authConfig = {
             return true;
         },
         async session({ session, token }) {
-            if (token.role && session.user) {
+            if (session.user) {
                 session.user.role = token.role as string;
+                session.user.isApproved = token.isApproved as boolean;
             }
             return session;
         },
         async jwt({ token, user }) {
             if (user) {
                 token.role = user.role;
+                token.isApproved = user.isApproved;
             }
             return token;
         },

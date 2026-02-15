@@ -33,19 +33,12 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
 
                     const passwordsMatch = await bcrypt.compare(password, user.password);
                     if (passwordsMatch) {
-                        if (!user.isApproved) {
-                            // Return null or throw specific error if possible.
-                            // NextAuth default behavior for errors is to return null or throw.
-                            // We'll return null for now (generic invalid creds) but ideally we'd pass a specific error.
-                            // For simplicity, we just won't auth them.
-                            console.log("User not approved");
-                            return null;
-                        }
                         return {
                             id: user.id.toString(),
                             name: user.name,
                             email: user.email,
                             role: user.role,
+                            isApproved: user.isApproved,
                         };
                     }
                 }
