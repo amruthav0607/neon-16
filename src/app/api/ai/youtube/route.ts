@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { youtubeNotes } from '@/lib/schema';
 import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
-import { YoutubeTranscript } from 'youtube-transcript-plus';
+import { Innertube } from 'youtubei.js';
 
 export async function POST(request: Request) {
     try {
@@ -22,23 +22,34 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Invalid YouTube URL. Please provide a standard YouTube or Shorts link.' }, { status: 400 });
         }
 
-        // 1. Fetch Transcript
+        // 1. Fetch Transcript using Innertube (mimics real client to bypass blocks)
         let transcriptText = '';
         try {
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
-                lang: 'en', // reliable default
+            const youtube = await Innertube.create({
+                lang: 'en',
+                location: 'US',
+                retrieve_player: false, // Speed up
             });
-            transcriptText = transcript.map(t => t.text).join(' ');
-        } catch (err) {
-            console.error('Failed to fetch transcript:', err);
-            // Fallback: Message about Vercel limitation
+
+            const info = await youtube.getInfo(videoId);
+            const transcriptData = await info.getTranscript();
+
+            if (!transcriptData.transcript) {
+                throw new Error('No transcript available');
+            }
+
+            // Extract text from segments
+            transcriptText = transcriptData.transcript.content?.body?.initial_segments.map((segment: any) => segment.snippet.text).join(' ') || '';
+
+        } catch (err: any) {
+            console.error('Failed to fetch transcript with Innertube:', err);
             return NextResponse.json({
                 error: 'COULD NOT FETCH TRANSCRIPT. NOTE: YouTube often blocks cloud servers (like Vercel). Please try running this App LOCALLY (localhost) where it will work perfectly.'
             }, { status: 400 });
         }
 
-        if (transcriptText.length < 50) { // Reduced threshold slightly
-            return NextResponse.json({ error: 'Transcript too short to process. Please ensure the video has substantial spoken content.' }, { status: 400 });
+        if (!transcriptText || transcriptText.length < 50) {
+            return NextResponse.json({ error: 'Transcript too short or empty. Please ensure the video has spoken content.' }, { status: 400 });
         }
 
         // 2. Call OpenRouter AI
@@ -62,7 +73,7 @@ export async function POST(request: Request) {
                     },
                     {
                         "role": "user",
-                        "content": `Please summarize the following transcript and provide detailed study notes:\n\n${transcriptText.substring(0, 20000)}` // Limit to prevent token issues
+                        "content": `Please summarize the following transcript and provide detailed study notes:\n\n${transcriptText.substring(0, 20000)}` // Limit based on model context
                     }
                 ],
                 "response_format": { "type": "json_object" }
