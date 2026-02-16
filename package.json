@@ -20,7 +20,7 @@
     "next-auth": "^5.0.0-beta.30",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "youtube-transcript": "^1.2.1",
+    "youtube-transcript-plus": "^1.2.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

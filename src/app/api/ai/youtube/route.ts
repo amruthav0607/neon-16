@@ -2,7 +2,7 @@ import { db } from '@/lib/db';
 import { youtubeNotes } from '@/lib/schema';
 import { auth } from '@/auth';
 import { NextResponse } from 'next/server';
-import { YoutubeTranscript } from 'youtube-transcript';
+import { YoutubeTranscript } from 'youtube-transcript-plus';
 
 export async function POST(request: Request) {
     try {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         // Extract video ID from URL
         const videoId = extractVideoId(videoUrl);
         if (!videoId) {
-            return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+            return NextResponse.json({ error: 'Invalid YouTube URL. Please provide a standard YouTube or Shorts link.' }, { status: 400 });
         }
 
         // 1. Fetch Transcript
@@ -29,15 +29,21 @@ export async function POST(request: Request) {
             transcriptText = transcript.map(t => t.text).join(' ');
         } catch (err) {
             console.error('Failed to fetch transcript:', err);
-            return NextResponse.json({ error: 'Could not fetch transcript for this video. Please ensure captions are available.' }, { status: 400 });
+            return NextResponse.json({
+                error: 'Could not fetch transcript for this video. This happens if the video has no captions, is age-restricted, or YouTube is blocking the request. Please try another video.'
+            }, { status: 400 });
         }
 
-        if (transcriptText.length < 100) {
-            return NextResponse.json({ error: 'Transcript too short to process.' }, { status: 400 });
+        if (transcriptText.length < 50) { // Reduced threshold slightly
+            return NextResponse.json({ error: 'Transcript too short to process. Please ensure the video has substantial spoken content.' }, { status: 400 });
         }
 
         // 2. Call OpenRouter AI
         const apiKey = process.env.OPENROUTER_API_KEY;
+        if (!apiKey) {
+            throw new Error('OPENROUTER_API_KEY is not configured.');
+        }
+
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -53,12 +59,17 @@ export async function POST(request: Request) {
                     },
                     {
                         "role": "user",
-                        "content": `Please summarize the following transcript and provide detailed study notes:\n\n${transcriptText.substring(0, 15000)}` // Limit to prevent token issues
+                        "content": `Please summarize the following transcript and provide detailed study notes:\n\n${transcriptText.substring(0, 20000)}` // Limit to prevent token issues
                     }
                 ],
                 "response_format": { "type": "json_object" }
             })
         });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`AI Service Error: ${errorData.error?.message || response.statusText}`);
+        }
 
         const aiData = await response.json();
         const rawContent = aiData.choices[0].message.content;
@@ -79,7 +90,7 @@ export async function POST(request: Request) {
         const [savedNote] = await db.insert(youtubeNotes).values({
             userId: userIdNumerical,
             videoUrl,
-            videoTitle: `Video ${videoId}`,
+            videoTitle: `Video Analysis: ${videoId}`,
             summary: content.summary,
             studyNotes: content.studyNotes,
         }).returning();
@@ -112,7 +123,9 @@ function parseAIJSON(text: string) {
 }
 
 function extractVideoId(url: string) {
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    // Enhanced regex to support standard URLs, shorts, and si parameter
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
+    const id = (match && match[2].length === 11) ? match[2] : null;
+    return id;
 }
