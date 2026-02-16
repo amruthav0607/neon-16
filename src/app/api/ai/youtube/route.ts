@@ -61,21 +61,53 @@ export async function POST(request: Request) {
         });
 
         const aiData = await response.json();
-        const content = JSON.parse(aiData.choices[0].message.content);
+        const rawContent = aiData.choices[0].message.content;
+
+        // Robust JSON parsing (handles markdown code blocks if the AI includes them)
+        const content = parseAIJSON(rawContent);
+
+        if (!content.summary || !content.studyNotes) {
+            throw new Error('AI failed to generate required fields.');
+        }
+
+        const userIdNumerical = Number(session.user.id);
+        if (isNaN(userIdNumerical)) {
+            throw new Error(`Invalid user ID: ${session.user.id}`);
+        }
 
         // 3. Save to Neon DB
         const [savedNote] = await db.insert(youtubeNotes).values({
-            userId: Number(session.user.id),
+            userId: userIdNumerical,
             videoUrl,
-            videoTitle: `Video ${videoId}`, // Ideally we'd fetch the title too, but for now this works
+            videoTitle: `Video ${videoId}`,
             summary: content.summary,
             studyNotes: content.studyNotes,
         }).returning();
 
         return NextResponse.json(savedNote);
-    } catch (error) {
+    } catch (error: any) {
         console.error('AI Processing error:', error);
-        return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({
+            error: error.message || 'Internal Server Error'
+        }, { status: 500 });
+    }
+}
+
+function parseAIJSON(text: string) {
+    try {
+        // Try direct parse first
+        return JSON.parse(text);
+    } catch (e) {
+        // Try extracting from markdown code blocks
+        const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (match && match[1]) {
+            try {
+                return JSON.parse(match[1]);
+            } catch (e2) {
+                console.error("Failed to parse extracted JSON", match[1]);
+            }
+        }
+        throw new Error("Could not parse AI response as JSON");
     }
 }
 

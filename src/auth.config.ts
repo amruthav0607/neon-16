@@ -30,7 +30,7 @@ export const authConfig = {
             if (session.user) {
                 session.user.role = token.role as string;
                 session.user.isApproved = token.isApproved as boolean;
-                session.user.id = token.sub as string;
+                session.user.id = (token.id || token.sub) as string;
             }
             return session;
         },
@@ -38,6 +38,7 @@ export const authConfig = {
             if (user) {
                 token.role = user.role;
                 token.isApproved = user.isApproved;
+                token.id = user.id;
             }
             return token;
         },
