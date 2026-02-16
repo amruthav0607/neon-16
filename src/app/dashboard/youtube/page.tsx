@@ -3,10 +3,27 @@ import { youtubeNotes } from '@/lib/schema';
 import { eq, desc } from 'drizzle-orm';
 import NoteForm from './NoteForm';
 import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 
 export default async function YouTubeToolPage() {
     const session = await auth();
-    const userId = Number(session?.user?.id);
+
+    if (!session || !session.user) {
+        redirect('/login');
+    }
+
+    const userId = Number(session.user.id);
+
+    if (isNaN(userId)) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
+                <div className="text-center p-10 bg-white rounded-3xl border border-[#eee] shadow-xl">
+                    <h2 className="text-xl font-bold text-red-600 mb-2">Account Configuration Error</h2>
+                    <p className="text-sm text-gray-500">Could not retrieve a valid user ID. Please try signing out and back in.</p>
+                </div>
+            </div>
+        );
+    }
 
     const notes = await db.select()
         .from(youtubeNotes)

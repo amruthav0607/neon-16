@@ -30,6 +30,7 @@ export const authConfig = {
             if (session.user) {
                 session.user.role = token.role as string;
                 session.user.isApproved = token.isApproved as boolean;
+                session.user.id = token.sub as string;
             }
             return session;
         },
