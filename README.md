@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Study Companion - React Dashboard
 
-## Getting Started
+An intelligent study companion that generates structured notes and summaries from YouTube videos using AI.
 
-First, run the development server:
+## 🚀 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **AI Summarization**: Instantly generates concise summaries and detailed study notes from YouTube videos.
+- **YouTube Shorts Support**: Works with both standard videos and Shorts.
+- **Robust Transcript Engine**: Uses `youtubei.js` (Innertube) to reliably fetch transcripts, mimicking a real YouTube client to bypass cloud IP blocks.
+- **Persistent Library**: Saves all your generated notes to a personal library using Neon DB (PostgreSQL).
+- **Secure Authentication**: Request-based signup with Admin approval workflow using NextAuth.js v5.
+- **Modern UI**: Built with Next.js 15, Tailwind CSS, and Lucide Icons for a premium experience.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Framework**: Next.js 15 (App Router)
+- **Database**: Neon (Serverless PostgreSQL)
+- **ORM**: Drizzle ORM
+- **Authentication**: NextAuth.js (Auth.js) v5
+- **AI Model**: Google Gemini 2.0 Flash (via OpenRouter)
+- **Styling**: Tailwind CSS
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📦 Deployment (Vercel)
 
-## Learn More
+This project is optimized for deployment on Vercel.
 
-To learn more about Next.js, take a look at the following resources:
+### Environment Variables
+Ensure the following variables are set in your Vercel Project Settings:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `DATABASE_URL`: Your Neon connection string (pooled).
+- `AUTH_SECRET`: A random 32-character string for session security.
+- `OPENROUTER_API_KEY`: API key from OpenRouter.ai.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 🏃‍♂️ Local Development
 
-## Deploy on Vercel
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/amruthav0607/neon-16.git
+   cd neon-16
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. **Set up environment**
+   Create a `.env.local` file with the required variables.
+
+4. **Run the server**
+   ```bash
+   npm run dev
+   ```
+
+Open [http://localhost:3000](http://localhost:3000) to view the app.
