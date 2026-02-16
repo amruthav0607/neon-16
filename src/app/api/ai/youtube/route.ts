@@ -25,12 +25,15 @@ export async function POST(request: Request) {
         // 1. Fetch Transcript
         let transcriptText = '';
         try {
-            const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+            const transcript = await YoutubeTranscript.fetchTranscript(videoId, {
+                lang: 'en', // reliable default
+            });
             transcriptText = transcript.map(t => t.text).join(' ');
         } catch (err) {
             console.error('Failed to fetch transcript:', err);
+            // Fallback: Message about Vercel limitation
             return NextResponse.json({
-                error: 'Could not fetch transcript for this video. This happens if the video has no captions, is age-restricted, or YouTube is blocking the request. Please try another video.'
+                error: 'COULD NOT FETCH TRANSCRIPT. NOTE: YouTube often blocks cloud servers (like Vercel). Please try running this App LOCALLY (localhost) where it will work perfectly.'
             }, { status: 400 });
         }
 
