@@ -53,6 +53,15 @@ export default async function DashboardPage() {
                         )}
 
                         <div className="space-y-3">
+                            {isApproved && (
+                                <Link
+                                    href="/dashboard/youtube"
+                                    className="block w-full text-center py-4 bg-indigo-600 text-white rounded-2xl font-bold text-sm hover:bg-indigo-700 transition-all transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-indigo-200"
+                                >
+                                    Try AI YouTube Tool
+                                </Link>
+                            )}
+
                             {user?.role === 'admin' && (
                                 <Link
                                     href="/admin"
