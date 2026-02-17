@@ -1,0 +1,28 @@
+# Task: Debug and Implement AI Study Companion Features
+
+- [x] Project Consolidation
+    - [x] Update `schema.prisma` with `YouTubeNote` model
+    - [x] Run Prisma generate/push
+- [x] YouTube Summarizer (yt-dlp)
+    - [x] Migrate YouTube UI from v2 to v4
+    - [x] Implement `yt-dlp` based transcript extraction API
+    - [x] Integrate with AI for summary and study notes
+- [x] Document Q&A (Debug & Enhance)
+    - [x] Verify PDF/Text upload and parsing
+    - [x] Test Q&A chat with Groom/Groq API
+    - [x] Improve context handling for "full content" reading
+- [x] Document Support & Fixes
+    - [x] Fix `pdf-parse` import/runtime issue (Downgraded to 1.1.1)
+    - [x] Resolve 404 error by renaming route to `/api/document-upload`
+    - [x] Add support for broader text formats (.md, .js, .py, etc.)
+    - [x] Implement Document Deletion feature
+    - [x] Verify End-to-End Document upload and Chat (Local Route Reachability Verified)
+- [x] Vercel Compatibility
+    - [x] Replace `yt-dlp` with `youtube-transcript`
+    - [x] Resolve invalid Git remote URL
+- [x] Final Verification
+    - [x] Test both systems end-to-end after redeploy (Local Verification Passed)
+    - [x] Verify Vercel deployment status (Pushed to `release/final` branch for clean history)
+- [x] Enhancements
+    - [x] Increase file upload size limit (UI & Config)
+    - [x] Switch to `pdf2json` for robust PDF parsing (Fixed ENOENT error)

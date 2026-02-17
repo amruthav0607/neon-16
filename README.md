@@ -1,55 +1,62 @@
-# AI Study Companion - React Dashboard
+# AI Study Companion
 
-An intelligent study companion that generates structured notes and summaries from YouTube videos using AI.
+A powerful, high-performance study platform designed to streamline learning through AI-driven summarization and document interaction.
 
 ## 🚀 Features
 
-- **AI Summarization**: Instantly generates concise summaries and detailed study notes from YouTube videos.
-- **YouTube Shorts Support**: Works with both standard videos and Shorts.
-- **Robust Transcript Engine**: Uses `youtubei.js` (Innertube) to reliably fetch transcripts, mimicking a real YouTube client to bypass cloud IP blocks.
-- **Persistent Library**: Saves all your generated notes to a personal library using Neon DB (PostgreSQL).
-- **Secure Authentication**: Request-based signup with Admin approval workflow using NextAuth.js v5.
-- **Modern UI**: Built with Next.js 15, Tailwind CSS, and Lucide Icons for a premium experience.
+### 📺 YouTube Summarizer
+- **Instant Analysis**: Generate structured study notes and executive summaries from any YouTube video.
+- **Vercel Compatible**: Uses a lightweight transcript extraction engine optimized for serverless deployments.
+- **Privacy Focused**: On-demand summarization without persistent history tracking.
 
-## 🛠️ Tech Stack
+### 📄 Document Q&A
+- **Deep Document Insight**: Upload PDF or Text files and have interactive conversations with the AI about their content.
+- **Full Content Processing**: Optimized to read and analyze lengthy documents (up to 30,000 characters) for comprehensive accuracy.
 
-- **Framework**: Next.js 15 (App Router)
-- **Database**: Neon (Serverless PostgreSQL)
-- **ORM**: Drizzle ORM
-- **Authentication**: NextAuth.js (Auth.js) v5
-- **AI Model**: Google Gemini 2.0 Flash (via OpenRouter)
-- **Styling**: Tailwind CSS
+### ⚡ Powered By
+- **Next.js 14**: Modern web framework for high-speed performance.
+- **Neon Database**: Serverless Postgres with optimized connection management.
+- **Groq AI (Llama 3.3)**: State-of-the-art inference for lightning-fast responses.
+- **Prisma ORM**: Robust database modeling and type-safe queries.
 
-## 📦 Deployment (Vercel)
+## 🛠️ Getting Started
 
-This project is optimized for deployment on Vercel.
+### Prerequisites
+- Node.js 18+
+- A Neon Database account
+- A Groq API key
 
-### Environment Variables
-Ensure the following variables are set in your Vercel Project Settings:
+### Installation
 
-- `DATABASE_URL`: Your Neon connection string (pooled).
-- `AUTH_SECRET`: A random 32-character string for session security.
-- `OPENROUTER_API_KEY`: API key from OpenRouter.ai.
-
-## 🏃‍♂️ Local Development
-
-1. **Clone the repo**
+1. Clone the repository:
    ```bash
    git clone https://github.com/amruthav0607/neon-16.git
    cd neon-16
    ```
 
-2. **Install dependencies**
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-3. **Set up environment**
-   Create a `.env.local` file with the required variables.
+3. Configure Environment Variables (`.env`):
+   ```env
+   DATABASE_URL="postgresql://user:pass@ep-host.region.aws.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=30"
+   GROQ_API_KEY="your_groq_api_key"
+   AUTH_SECRET="your_nextauth_secret"
+   ```
 
-4. **Run the server**
+4. Initialize Database:
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+5. Run Locally:
    ```bash
    npm run dev
    ```
 
-Open [http://localhost:3000](http://localhost:3000) to view the app.
+## 🌐 Deployment
+
+This project is optimized for deployment on **Vercel**. Ensure all environment variables are correctly configured in your Vercel project settings.

@@ -1,145 +1,103 @@
-import { db } from '@/lib/db';
-import { youtubeNotes } from '@/lib/schema';
-import { auth } from '@/auth';
-import { NextResponse } from 'next/server';
-import { Innertube } from 'youtubei.js';
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
+import prisma from "@/lib/prisma";
+import { Groq } from "groq-sdk";
+import { YoutubeTranscript } from "youtube-transcript";
 
-export async function POST(request: Request) {
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY,
+});
+
+export async function POST(req: NextRequest) {
+    const session = await auth();
+
+    if (!session || !session.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
-        const session = await auth();
-        if (!session || !session.user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        const { videoUrl } = await req.json();
 
-        const { videoUrl } = await request.json();
         if (!videoUrl) {
-            return NextResponse.json({ error: 'Video URL is required' }, { status: 400 });
+            return NextResponse.json({ error: "Video URL is required" }, { status: 400 });
         }
 
-        // Extract video ID from URL
         const videoId = extractVideoId(videoUrl);
         if (!videoId) {
-            return NextResponse.json({ error: 'Invalid YouTube URL. Please provide a standard YouTube or Shorts link.' }, { status: 400 });
+            return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
-        // 1. Fetch Transcript using Innertube (mimics real client to bypass blocks)
-        let transcriptText = '';
+        console.log("Fetching transcript for video:", videoId);
+        let transcriptText = "";
+
         try {
-            const youtube = await Innertube.create({
-                lang: 'en',
-                location: 'US',
-                retrieve_player: false, // Speed up
-            });
-
-            const info = await youtube.getInfo(videoId);
-            const transcriptData = await info.getTranscript();
-
-            if (!transcriptData.transcript) {
-                throw new Error('No transcript available');
-            }
-
-            // Extract text from segments
-            transcriptText = transcriptData.transcript.content?.body?.initial_segments.map((segment: any) => segment.snippet.text).join(' ') || '';
-
-        } catch (err: any) {
-            console.error('Failed to fetch transcript with Innertube:', err);
+            const transcript = await YoutubeTranscript.fetchTranscript(videoUrl);
+            transcriptText = transcript.map(t => t.text).join(" ");
+        } catch (e: any) {
+            console.error("youtube-transcript error:", e);
             return NextResponse.json({
-                error: 'COULD NOT FETCH TRANSCRIPT. NOTE: YouTube often blocks cloud servers (like Vercel). Please try running this App LOCALLY (localhost) where it will work perfectly.'
+                error: "Failed to fetch transcript. The video might not have English subtitles or extraction was blocked by YouTube.",
+                details: e.message
             }, { status: 400 });
         }
 
         if (!transcriptText || transcriptText.length < 50) {
-            return NextResponse.json({ error: 'Transcript too short or empty. Please ensure the video has spoken content.' }, { status: 400 });
+            return NextResponse.json({ error: "Transcript is too short or empty." }, { status: 400 });
         }
 
-        // 2. Call OpenRouter AI
-        const apiKey = process.env.OPENROUTER_API_KEY;
-        if (!apiKey) {
-            throw new Error('OPENROUTER_API_KEY is not configured.');
-        }
+        console.log("Transcript extracted, length:", transcriptText.length);
 
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                "model": "google/gemini-2.0-flash-001",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are an expert academic assistant. Your task is to summarize YouTube video transcripts and generate clean, structured study notes. Output should be JSON with 'summary' and 'studyNotes' fields. Use markdown for the studyNotes."
-                    },
-                    {
-                        "role": "user",
-                        "content": `Please summarize the following transcript and provide detailed study notes:\n\n${transcriptText.substring(0, 20000)}` // Limit based on model context
-                    }
-                ],
-                "response_format": { "type": "json_object" }
-            })
+        // 2. AI Summarization with Groq SDK
+        console.log("Calling Groq for summarization...");
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expert academic assistant. Summarize the following YouTube transcript into an executive summary and detailed study notes. Return the result in JSON format with keys 'summary' and 'studyNotes'. Both 'summary' and 'studyNotes' MUST be strings. Use markdown for studyNotes."
+                },
+                {
+                    role: "user",
+                    content: `Transcript:\n${transcriptText.substring(0, 20000)}`
+                }
+            ],
+            model: "llama-3.3-70b-versatile",
+            response_format: { type: "json_object" }
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(`AI Service Error: ${errorData.error?.message || response.statusText}`);
+        const rawContent = chatCompletion.choices[0]?.message?.content;
+        if (!rawContent) {
+            throw new Error("AI returned empty content");
         }
 
-        const aiData = await response.json();
-        const rawContent = aiData.choices[0].message.content;
+        const content = JSON.parse(rawContent);
 
-        // Robust JSON parsing (handles markdown code blocks if the AI includes them)
-        const content = parseAIJSON(rawContent);
+        // Ensure summary and studyNotes are strings (AI might return array)
+        const summary = Array.isArray(content.summary) ? content.summary.join("\n") : content.summary;
+        const studyNotes = Array.isArray(content.studyNotes) ? content.studyNotes.join("\n") : content.studyNotes;
 
-        if (!content.summary || !content.studyNotes) {
-            throw new Error('AI failed to generate required fields.');
-        }
+        console.log("AI summarization complete.");
 
-        const userIdNumerical = Number(session.user.id);
-        if (isNaN(userIdNumerical)) {
-            throw new Error(`Invalid user ID: ${session.user.id}`);
-        }
-
-        // 3. Save to Neon DB
-        const [savedNote] = await db.insert(youtubeNotes).values({
-            userId: userIdNumerical,
-            videoUrl,
-            videoTitle: `Video Analysis: ${videoId}`,
-            summary: content.summary,
-            studyNotes: content.studyNotes,
-        }).returning();
-
-        return NextResponse.json(savedNote);
-    } catch (error: any) {
-        console.error('AI Processing error:', error);
-        return NextResponse.json({
-            error: error.message || 'Internal Server Error'
-        }, { status: 500 });
-    }
-}
-
-function parseAIJSON(text: string) {
-    try {
-        // Try direct parse first
-        return JSON.parse(text);
-    } catch (e) {
-        // Try extracting from markdown code blocks
-        const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        if (match && match[1]) {
-            try {
-                return JSON.parse(match[1]);
-            } catch (e2) {
-                console.error("Failed to parse extracted JSON", match[1]);
+        // 3. Save to DB (Optional, but we'll return it directly)
+        const note = await prisma.youTubeNote.create({
+            data: {
+                videoUrl,
+                videoTitle: `Analysis: ${videoId}`,
+                summary: summary || "",
+                studyNotes: studyNotes || "",
+                userId: session.user.id as string,
             }
-        }
-        throw new Error("Could not parse AI response as JSON");
+        });
+
+        return NextResponse.json(note);
+
+    } catch (error: any) {
+        console.error("YouTube processing error:", error);
+        return NextResponse.json({ error: error.message || "Failed to process video" }, { status: 500 });
     }
 }
 
 function extractVideoId(url: string) {
-    // Enhanced regex to support standard URLs, shorts, and si parameter
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
     const match = url.match(regExp);
-    const id = (match && match[2].length === 11) ? match[2] : null;
-    return id;
+    return (match && match[2].length === 11) ? match[2] : null;
 }
