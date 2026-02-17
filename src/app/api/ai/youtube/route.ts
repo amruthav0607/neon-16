@@ -31,8 +31,20 @@ export async function POST(req: NextRequest) {
         let transcriptText = "";
 
         try {
-            // 1. Get Video Info
-            const info = await ytdl.getInfo(videoUrl);
+            // 1. Get Video Info with Cookies (if available)
+            const agentOptions: any = {};
+            if (process.env.YOUTUBE_COOKIES) {
+                try {
+                    const cookies = JSON.parse(process.env.YOUTUBE_COOKIES);
+                    agentOptions.cookies = cookies;
+                    console.log("Using provided YouTube cookies.");
+                } catch (e) {
+                    console.warn("Failed to parse YOUTUBE_COOKIES:", e);
+                }
+            }
+
+            const agent = ytdl.createAgent(Array.isArray(agentOptions.cookies) ? agentOptions.cookies : undefined);
+            const info = await ytdl.getInfo(videoUrl, { agent });
             const tracks = info.player_response.captions?.playerCaptionsTracklistRenderer?.captionTracks;
 
             if (!tracks || tracks.length === 0) {
