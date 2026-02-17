@@ -1,40 +1,42 @@
-import { db } from '@/lib/db';
-import { users } from '@/lib/schema';
+import prisma from '@/lib/prisma';
 import { auth } from '@/auth';
 import { redirect } from 'next/navigation';
-import { eq, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 
-async function toggleApproval(userId: number, currentStatus: boolean) {
+async function toggleApproval(userId: string, currentStatus: boolean) {
     'use server';
-    await db.update(users)
-        .set({ isApproved: !currentStatus })
-        .where(eq(users.id, userId));
+    await prisma.user.update({
+        where: { id: userId },
+        data: { isApproved: !currentStatus }
+    });
     revalidatePath('/admin');
 }
 
-async function changeRole(userId: number, newRole: 'admin' | 'user') {
+async function changeRole(userId: string, newRole: 'ADMIN' | 'USER') {
     'use server';
-    await db.update(users)
-        .set({ role: newRole })
-        .where(eq(users.id, userId));
+    await prisma.user.update({
+        where: { id: userId },
+        data: { role: newRole }
+    });
     revalidatePath('/admin');
 }
 
-async function deleteUser(userId: number) {
+async function deleteUser(userId: string) {
     'use server';
-    await db.delete(users).where(eq(users.id, userId));
+    await prisma.user.delete({ where: { id: userId } });
     revalidatePath('/admin');
 }
 
 export default async function AdminDashboard() {
     const session = await auth();
 
-    if (!session || session.user?.role !== 'admin') {
+    if (!session || session.user?.role !== 'ADMIN') {
         redirect('/dashboard');
     }
 
-    const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
+    const allUsers = await prisma.user.findMany({
+        orderBy: { createdAt: 'desc' }
+    });
 
     return (
         <div className="min-h-screen bg-[#fafafa] p-6 md:p-10 font-[Inter,sans-serif]">
@@ -63,7 +65,7 @@ export default async function AdminDashboard() {
                     </div>
                     <div className="bg-white p-6 rounded-2xl border border-[#eee] shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
                         <p className="text-xs font-bold text-[#888] uppercase tracking-widest mb-1">Active Admins</p>
-                        <h2 className="text-3xl font-black text-[#111]">{allUsers.filter(u => u.role === 'admin').length}</h2>
+                        <h2 className="text-3xl font-black text-[#111]">{allUsers.filter(u => u.role === 'ADMIN').length}</h2>
                     </div>
                 </div>
 
@@ -93,7 +95,7 @@ export default async function AdminDashboard() {
                                             </div>
                                         </td>
                                         <td className="px-8 py-5 text-sm">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${user.role === 'admin'
+                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${user.role === 'ADMIN'
                                                 ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
                                                 : 'bg-slate-50 text-slate-700 border border-slate-200'
                                                 }`}>
@@ -115,11 +117,11 @@ export default async function AdminDashboard() {
                                         </td>
                                         <td className="px-8 py-5 text-right">
                                             <div className="flex items-center justify-end gap-3">
-                                                <form action={changeRole.bind(null, user.id, user.role === 'admin' ? 'user' : 'admin')}>
+                                                <form action={changeRole.bind(null, user.id, user.role === 'ADMIN' ? 'USER' : 'ADMIN')}>
                                                     <button
                                                         type="submit"
                                                         className="p-2 text-[#888] hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                                        title={user.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
+                                                        title={user.role === 'ADMIN' ? 'Demote to User' : 'Promote to Admin'}
                                                     >
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
