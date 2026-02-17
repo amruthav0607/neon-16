@@ -1,17 +1,35 @@
 'use client';
 
-import { useActionState, Suspense } from 'react';
+import { useFormState, useFormStatus } from 'react-dom';
 import { authenticate } from '@/app/lib/actions';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+
+function SubmitButton() {
+    const { pending } = useFormStatus();
+
+    return (
+        <button
+            type="submit"
+            aria-disabled={pending}
+            disabled={pending}
+            className="w-full py-5 bg-[#111] text-white rounded-2xl font-bold text-sm hover:bg-[#333] transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/10 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
+        >
+            {pending ? (
+                <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>Authenticating...</span>
+                </>
+            ) : 'Sign In Now'}
+        </button>
+    );
+}
 
 function LoginForm() {
     const searchParams = useSearchParams();
     const message = searchParams.get('message');
-    const [errorMessage, formAction, isPending] = useActionState(
-        authenticate,
-        undefined,
-    );
+    const [errorMessage, formAction] = useFormState(authenticate, undefined);
 
     return (
         <>
@@ -56,18 +74,7 @@ function LoginForm() {
                     />
                 </div>
 
-                <button
-                    type="submit"
-                    aria-disabled={isPending}
-                    className="w-full py-5 bg-[#111] text-white rounded-2xl font-bold text-sm hover:bg-[#333] transition-all transform hover:scale-[1.02] active:scale-95 shadow-xl shadow-black/10 flex items-center justify-center gap-3 mt-4 disabled:opacity-50 disabled:scale-100 disabled:cursor-not-allowed"
-                >
-                    {isPending ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            <span>Authenticating...</span>
-                        </>
-                    ) : 'Sign In Now'}
-                </button>
+                <SubmitButton />
 
                 {errorMessage && (
                     <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-shake">
