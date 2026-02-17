@@ -11,6 +11,9 @@ export default function YouTubeForm() {
     const [result, setResult] = useState<any>(null);
     const router = useRouter();
 
+    const [manualTranscript, setManualTranscript] = useState("");
+    const [showManualInput, setShowManualInput] = useState(false);
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setLoading(true);
@@ -21,14 +24,26 @@ export default function YouTubeForm() {
             const res = await fetch("/api/ai/youtube", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ videoUrl: url }),
+                body: JSON.stringify({
+                    videoUrl: url,
+                    manualTranscript: showManualInput ? manualTranscript : undefined
+                }),
             });
 
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to process video");
+
+            if (!res.ok) {
+                if (data.requiresManualInput) {
+                    setShowManualInput(true);
+                    throw new Error("Unable to fetch transcript automatically. Please paste it manually below.");
+                }
+                throw new Error(data.error || "Failed to process video");
+            }
 
             setResult(data);
             setUrl("");
+            setManualTranscript("");
+            setShowManualInput(false);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -48,11 +63,33 @@ export default function YouTubeForm() {
                         type="url"
                         placeholder="Paste YouTube Video Link here (e.g., https://youtube.com/watch?v=...)"
                         value={url}
-                        onChange={(e) => setUrl(e.target.value)}
+                        onChange={(e) => {
+                            setUrl(e.target.value);
+                            if (!showManualInput) setError(null);
+                        }}
                         required
                         className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none"
                     />
                 </div>
+
+                {showManualInput && (
+                    <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+                        <label className="block text-sm font-medium text-gray-400 mb-2 ml-1">
+                            Manual Transcript (Required for this video)
+                        </label>
+                        <textarea
+                            placeholder="Paste the full transcript text here..."
+                            value={manualTranscript}
+                            onChange={(e) => setManualTranscript(e.target.value)}
+                            required
+                            rows={8}
+                            className="w-full px-6 py-5 bg-white/5 border border-red-500/30 rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all outline-none"
+                        />
+                        <p className="text-xs text-gray-500 mt-2 ml-1">
+                            Tip: On YouTube, click <strong>... More</strong> &gt; <strong>Show Transcript</strong> &gt; <strong>Toggle timestamps</strong> &gt; Copy all text.
+                        </p>
+                    </div>
+                )}
 
                 <button
                     type="submit"
