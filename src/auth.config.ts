@@ -1,46 +1,29 @@
-import type { NextAuthConfig } from 'next-auth';
+import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
     pages: {
-        signIn: '/login',
+        signIn: "/auth/login",
     },
-    providers: [],
     callbacks: {
         authorized({ auth, request: { nextUrl } }) {
             const isLoggedIn = !!auth?.user;
-            const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
-            const isOnAdmin = nextUrl.pathname.startsWith('/admin');
+            const isDashboard = nextUrl.pathname.startsWith("/dashboard");
+            const isAdminPage = nextUrl.pathname.startsWith("/dashboard/admin");
 
-            if (isOnAdmin) {
-                if (isLoggedIn && auth.user.role === 'admin') return true;
-                return false; // Redirect if not admin
-            }
+            if (isDashboard) {
+                if (!isLoggedIn) return false;
 
-            if (isOnDashboard) {
-                if (isLoggedIn) return true;
-                return false;
-            } else if (isLoggedIn) {
-                if (nextUrl.pathname === '/login' || nextUrl.pathname === '/signup') {
-                    return Response.redirect(new URL('/dashboard', nextUrl));
+                // Admin protection
+                if (isAdminPage && auth.user.role !== "ADMIN") {
+                    return Response.redirect(new URL("/dashboard", nextUrl));
                 }
+
+                return true;
+            } else if (isLoggedIn) {
+                return Response.redirect(new URL("/dashboard", nextUrl));
             }
             return true;
         },
-        async session({ session, token }) {
-            if (session.user) {
-                session.user.role = token.role as string;
-                session.user.isApproved = token.isApproved as boolean;
-                session.user.id = (token.id || token.sub) as string;
-            }
-            return session;
-        },
-        async jwt({ token, user }) {
-            if (user) {
-                token.role = user.role;
-                token.isApproved = user.isApproved;
-                token.id = user.id;
-            }
-            return token;
-        },
     },
+    providers: [],
 } satisfies NextAuthConfig;

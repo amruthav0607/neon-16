@@ -1,50 +1,63 @@
-import NextAuth from 'next-auth';
-import { authConfig } from './auth.config';
-import Credentials from 'next-auth/providers/credentials';
-import { z } from 'zod';
-import { db } from '@/lib/db';
-import { users } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
-import bcrypt from 'bcryptjs';
+import NextAuth from "next-auth";
+import { authConfig } from "./auth.config";
+import Credentials from "next-auth/providers/credentials";
+import prisma from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
-async function getUser(email: string) {
-    try {
-        const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
-        return user[0];
-    } catch (error) {
-        console.error('Failed to fetch user:', error);
-        throw new Error('Failed to fetch user.');
-    }
-}
-
-export const { auth, signIn, signOut, handlers } = NextAuth({
+export const {
+    handlers: { GET, POST },
+    auth,
+    signIn,
+    signOut,
+} = NextAuth({
     ...authConfig,
     providers: [
         Credentials({
             async authorize(credentials) {
-                const parsedCredentials = z
-                    .object({ email: z.string().email(), password: z.string().min(6) })
-                    .safeParse(credentials);
+                if (!credentials?.email || !credentials?.password) return null;
 
-                if (parsedCredentials.success) {
-                    const { email, password } = parsedCredentials.data;
-                    const user = await getUser(email);
-                    if (!user) return null;
+                const user = await prisma.user.findUnique({
+                    where: { email: credentials.email as string },
+                });
 
-                    const passwordsMatch = await bcrypt.compare(password, user.password);
-                    if (passwordsMatch) {
-                        return {
-                            id: user.id.toString(),
-                            name: user.name,
-                            email: user.email,
-                            role: user.role,
-                            isApproved: user.isApproved,
-                        };
-                    }
+                if (!user || !user.password) return null;
+
+                const isPasswordCorrect = await bcrypt.compare(
+                    credentials.password as string,
+                    user.password
+                );
+
+                if (!isPasswordCorrect) return null;
+
+                // Check if user is approved
+                if (!user.isApproved) {
+                    // Note: In NextAuth v5, throwing an error here will be caught and can be displayed on the login page
+                    throw new Error("ApprovalPending");
                 }
-                console.log("Invalid credentials");
-                return null;
+
+                return {
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                };
             },
         }),
     ],
+    callbacks: {
+        async jwt({ token, user }) {
+            if (user) {
+                token.role = (user as any).role;
+                token.id = user.id;
+            }
+            return token;
+        },
+        async session({ session, token }) {
+            if (token) {
+                session.user.id = token.id as string;
+                session.user.role = token.role as string;
+            }
+            return session;
+        }
+    }
 });
