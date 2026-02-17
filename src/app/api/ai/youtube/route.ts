@@ -40,7 +40,11 @@ export async function POST(req: NextRequest) {
             }
 
             // 2. Find English or fallback to first
-            const track = tracks.find((t: any) => t.languageCode === 'en') || tracks[0];
+            // Logic: Try exact 'en' -> Try 'en-*' (e.g. en-US) -> Fallback to first available
+            const track = tracks.find((t: any) => t.languageCode === 'en')
+                || tracks.find((t: any) => t.languageCode?.startsWith('en'))
+                || tracks[0];
+
             console.log(`Selected track: ${track.name.simpleText} (${track.languageCode})`);
 
             // 3. Fetch Transcript JSON
