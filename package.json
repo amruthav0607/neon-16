@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@distube/ytdl-core": "^4.16.12",
     "@neondatabase/serverless": "^1.0.2",
     "@prisma/client": "^6.19.2",
     "bcryptjs": "^3.0.3",
@@ -21,8 +22,7 @@
     "pg": "^8.18.0",
     "react": "^18",
     "react-dom": "^18",
-    "tailwind-merge": "^3.4.1",
-    "youtube-transcript": "^1.2.1"
+    "tailwind-merge": "^3.4.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

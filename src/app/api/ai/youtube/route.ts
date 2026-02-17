@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Groq } from "groq-sdk";
-import { YoutubeTranscript } from "youtube-transcript";
+import ytdl from "@distube/ytdl-core";
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -27,16 +27,48 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
         }
 
-        console.log("Fetching transcript for video:", videoId);
+        console.log("Fetching transcript using @distube/ytdl-core for:", videoId);
         let transcriptText = "";
 
         try {
-            const transcript = await YoutubeTranscript.fetchTranscript(videoUrl);
-            transcriptText = transcript.map(t => t.text).join(" ");
+            // 1. Get Video Info
+            const info = await ytdl.getInfo(videoUrl);
+            const tracks = info.player_response.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+
+            if (!tracks || tracks.length === 0) {
+                throw new Error("No captions found for this video.");
+            }
+
+            // 2. Find English or fallback to first
+            const track = tracks.find((t: any) => t.languageCode === 'en') || tracks[0];
+            console.log(`Selected track: ${track.name.simpleText} (${track.languageCode})`);
+
+            // 3. Fetch Transcript JSON
+            const response = await fetch(`${track.baseUrl}&fmt=json3`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch transcript content: ${response.statusText}`);
+            }
+
+            const json = await response.json();
+
+            // 4. Parse JSON events
+            if (json.events) {
+                transcriptText = json.events
+                    .map((e: any) => e.segs ? e.segs.map((s: any) => s.utf8).join('') : '')
+                    .join(' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+            }
+
         } catch (e: any) {
-            console.error("youtube-transcript error:", e);
+            console.error("Transcript fetch error:", e);
             return NextResponse.json({
-                error: "Failed to fetch transcript. The video might not have English subtitles or extraction was blocked by YouTube.",
+                error: "Failed to fetch transcript. Video might be restricted or lacking captions.",
                 details: e.message
             }, { status: 400 });
         }
