@@ -31,7 +31,6 @@ export const {
 
                 // Check if user is approved
                 if (!user.isApproved) {
-                    // Note: In NextAuth v5, throwing an error here will be caught and can be displayed on the login page
                     throw new Error("ApprovalPending");
                 }
 
@@ -44,20 +43,5 @@ export const {
             },
         }),
     ],
-    callbacks: {
-        async jwt({ token, user }) {
-            if (user) {
-                token.role = (user as any).role;
-                token.id = user.id;
-            }
-            return token;
-        },
-        async session({ session, token }) {
-            if (token) {
-                session.user.id = token.id as string;
-                session.user.role = token.role as string;
-            }
-            return session;
-        }
-    }
 });
+
