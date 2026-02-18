@@ -264,25 +264,73 @@ export async function POST(req: NextRequest) {
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert academic assistant. Summarize the following YouTube transcript into an executive summary and detailed study notes. IMPORTANT: You MUST always write your response in ENGLISH, even if the transcript is in another language — translate and summarize into English. Return the result in JSON format with keys 'summary' and 'studyNotes'. Both 'summary' and 'studyNotes' MUST be strings in English. Use markdown formatting for studyNotes with headers, bullet points, and key takeaways."
+                    content: `You are an expert academic assistant. Summarize the following YouTube transcript.
+
+RULES:
+1. ALWAYS respond in ENGLISH, even if the transcript is in another language.
+2. Return ONLY a valid JSON object with exactly two keys: "summary" and "studyNotes".
+3. Both values MUST be JSON strings (wrapped in double quotes, with any internal quotes escaped as \\").
+4. For studyNotes, use markdown formatting with ## headers, bullet points (- ), and **bold** for key terms.
+5. Do NOT include any text outside the JSON object.
+
+Example format:
+{"summary": "A brief executive summary here.", "studyNotes": "## Topic\\n- Key point 1\\n- Key point 2"}`
                 },
                 {
                     role: "user",
-                    content: `Transcript:\n${transcriptText.substring(0, 20000)}`
+                    content: `Summarize this transcript:\n${transcriptText.substring(0, 20000)}`
                 }
             ],
             model: "llama-3.3-70b-versatile",
-            response_format: { type: "json_object" }
+            temperature: 0.3,
         });
 
-        const rawContent = chatCompletion.choices[0]?.message?.content;
+        const rawContent = chatCompletion.choices[0]?.message?.content || '';
         if (!rawContent) {
             throw new Error("AI returned empty content");
         }
 
-        const content = JSON.parse(rawContent);
-        const summary = Array.isArray(content.summary) ? content.summary.join("\n") : content.summary;
-        const studyNotes = Array.isArray(content.studyNotes) ? content.studyNotes.join("\n") : content.studyNotes;
+        // Robust JSON parsing with fallback
+        let summary = "";
+        let studyNotes = "";
+
+        try {
+            // Try direct JSON parse first
+            const jsonMatch = rawContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const content = JSON.parse(jsonMatch[0]);
+                summary = Array.isArray(content.summary) ? content.summary.join("\n") : (content.summary || "");
+                studyNotes = Array.isArray(content.studyNotes) ? content.studyNotes.join("\n") : (content.studyNotes || "");
+            }
+        } catch {
+            // Fallback: extract summary and studyNotes manually from malformed JSON
+            console.warn("JSON parse failed, using fallback extraction");
+            const summaryMatch = rawContent.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (summaryMatch) summary = summaryMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+
+            // Extract everything after "studyNotes" as the notes
+            const notesStart = rawContent.indexOf('"studyNotes"');
+            if (notesStart !== -1) {
+                let notesContent = rawContent.substring(notesStart + '"studyNotes"'.length);
+                // Try to get quoted value first
+                const quotedMatch = notesContent.match(/^\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (quotedMatch) {
+                    studyNotes = quotedMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+                } else {
+                    // Grab raw content after the colon
+                    notesContent = notesContent.replace(/^\s*:\s*/, '').replace(/\}?\s*$/, '').trim();
+                    if (notesContent.startsWith('"')) notesContent = notesContent.substring(1);
+                    if (notesContent.endsWith('"')) notesContent = notesContent.slice(0, -1);
+                    studyNotes = notesContent.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+                }
+            }
+
+            // Last resort: use entire raw content
+            if (!summary && !studyNotes) {
+                summary = "See study notes for details.";
+                studyNotes = rawContent;
+            }
+        }
 
         console.log("✅ AI summarization complete.");
 
