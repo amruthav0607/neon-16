@@ -2,11 +2,91 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Groq } from "groq-sdk";
-import { YoutubeTranscript } from "youtube-transcript";
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
+
+// Multi-strategy transcript fetcher for reliability
+async function fetchTranscript(videoId: string, videoUrl: string): Promise<string> {
+    const errors: string[] = [];
+
+    // Strategy 1: youtube-transcript-plus (more robust)
+    try {
+        const { getTranscript } = await import("youtube-transcript-plus");
+        const transcript = await getTranscript(videoId);
+        if (transcript && transcript.length > 0) {
+            const text = transcript.map((t: any) => t.text).join(" ");
+            if (text.length > 50) {
+                console.log("Transcript fetched via youtube-transcript-plus");
+                return text;
+            }
+        }
+    } catch (e: any) {
+        console.warn("youtube-transcript-plus failed:", e.message);
+        errors.push(`Strategy 1: ${e.message}`);
+    }
+
+    // Strategy 2: Original youtube-transcript package
+    try {
+        const { YoutubeTranscript } = await import("youtube-transcript");
+        const transcript = await YoutubeTranscript.fetchTranscript(videoUrl);
+        const text = transcript.map((t: any) => t.text).join(" ");
+        if (text.length > 50) {
+            console.log("Transcript fetched via youtube-transcript");
+            return text;
+        }
+    } catch (e: any) {
+        console.warn("youtube-transcript failed:", e.message);
+        errors.push(`Strategy 2: ${e.message}`);
+    }
+
+    // Strategy 3: Direct fetch from YouTube's timedtext API
+    try {
+        const pageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+        });
+        const pageHtml = await pageResponse.text();
+
+        // Extract captions URL from page HTML
+        const captionMatch = pageHtml.match(/"captionTracks":\s*\[(.*?)\]/);
+        if (captionMatch) {
+            const captionData = JSON.parse(`[${captionMatch[1]}]`);
+            const enCaption = captionData.find((c: any) =>
+                c.languageCode === 'en' || c.vssId?.includes('.en')
+            ) || captionData[0]; // Fallback to first available language
+
+            if (enCaption?.baseUrl) {
+                const captionResponse = await fetch(enCaption.baseUrl);
+                const captionXml = await captionResponse.text();
+
+                // Parse XML captions
+                const textSegments = captionXml.match(/<text[^>]*>(.*?)<\/text>/gs);
+                if (textSegments && textSegments.length > 0) {
+                    const text = textSegments
+                        .map((s: string) => s.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"'))
+                        .join(" ")
+                        .replace(/\s+/g, ' ')
+                        .trim();
+
+                    if (text.length > 50) {
+                        console.log("Transcript fetched via direct YouTube page scrape");
+                        return text;
+                    }
+                }
+            }
+        }
+        errors.push("Strategy 3: No captions found in page HTML");
+    } catch (e: any) {
+        console.warn("Direct YouTube fetch failed:", e.message);
+        errors.push(`Strategy 3: ${e.message}`);
+    }
+
+    throw new Error(`All transcript strategies failed:\n${errors.join('\n')}`);
+}
 
 export async function POST(req: NextRequest) {
     const session = await auth();
@@ -28,15 +108,14 @@ export async function POST(req: NextRequest) {
         }
 
         console.log("Fetching transcript for video:", videoId);
-        let transcriptText = "";
 
+        let transcriptText = "";
         try {
-            const transcript = await YoutubeTranscript.fetchTranscript(videoUrl);
-            transcriptText = transcript.map(t => t.text).join(" ");
+            transcriptText = await fetchTranscript(videoId, videoUrl);
         } catch (e: any) {
-            console.error("youtube-transcript error:", e);
+            console.error("All transcript methods failed:", e.message);
             return NextResponse.json({
-                error: "Failed to fetch transcript. The video might not have English subtitles or extraction was blocked by YouTube.",
+                error: "Failed to fetch transcript. The video might not have subtitles, or YouTube blocked the request. Try a different video.",
                 details: e.message
             }, { status: 400 });
         }
@@ -77,7 +156,7 @@ export async function POST(req: NextRequest) {
 
         console.log("AI summarization complete.");
 
-        // 3. Save to DB (Optional, but we'll return it directly)
+        // 3. Save to DB
         const note = await prisma.youTubeNote.create({
             data: {
                 videoUrl,
