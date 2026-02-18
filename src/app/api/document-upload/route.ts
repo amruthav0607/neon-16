@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
+import { indexDocument } from "@/lib/vector-store";
 
 export async function GET() {
   return NextResponse.json({ message: "Upload endpoint is active. Use POST to upload documents." });
@@ -20,10 +21,16 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File;
+    const workspaceId = formData.get("workspaceId") as string;
 
     if (!file) {
       console.error("No file found in form data");
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+
+    if (!workspaceId) {
+      console.error("No workspaceId provided");
+      return NextResponse.json({ error: "Workspace ID is required" }, { status: 400 });
     }
 
     console.log(`Processing File: ${file.name}, type: ${file.type}, size: ${file.size} bytes`);
@@ -64,16 +71,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Document content could not be extracted or is empty" }, { status: 400 });
     }
 
+    // Verify workspace belongs to user
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId, userId: session.user.id }
+    });
+
+    if (!workspace) {
+      return NextResponse.json({ error: "Invalid workspace" }, { status: 403 });
+    }
+
     console.log("Preparing database record...");
     const document = await prisma.document.create({
       data: {
         name: file.name,
         content: content,
         userId: session.user.id as string,
+        workspaceId: workspaceId
       },
     });
 
-    console.log("SUCCESS: Document saved to DB with ID:", document.id);
+    console.log("SUCCESS: Document saved to DB. Starting Vector Indexing...");
+
+    // Background indexing (or await if we want to confirm)
+    await indexDocument(document.id, content);
+    console.log("Vector Indexing Complete.");
+
     return NextResponse.json({ id: document.id, name: document.name });
 
   } catch (error: any) {

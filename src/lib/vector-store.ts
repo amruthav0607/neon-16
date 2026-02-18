@@ -6,10 +6,13 @@ import { PrismaVectorStore } from "@langchain/community/vectorstores/prisma";
 const prisma = new PrismaClient();
 
 // Use text-embedding-3-small (1536 dim) to match DB schema
-// Requires OPENAI_API_KEY environment variable
+// Requires OPENAI_API_KEY environment variable. Supports OpenRouter via BASE_URL.
 export const embeddings = new OpenAIEmbeddings({
     modelName: "text-embedding-3-small",
     dimensions: 1536,
+    configuration: {
+        baseURL: process.env.OPENAI_BASE_URL,
+    },
 });
 
 export const getVectorStore = () => {
