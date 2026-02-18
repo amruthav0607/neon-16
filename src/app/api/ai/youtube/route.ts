@@ -343,7 +343,7 @@ export async function POST(req: NextRequest) {
                             ]
                         }
                     ],
-                    model: "llama-3.2-90b-vision-preview",
+                    model: "llama-4-scout-17b-16e-instruct",
                     temperature: 0.1,
                     max_tokens: 8000,
                 });
