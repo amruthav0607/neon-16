@@ -34,12 +34,14 @@ export default async function DashboardPage() {
                 ))}
             </div>
 
-            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 h-64 flex flex-col items-center justify-center text-center">
-                <div className="h-12 w-12 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4">
-                    <LayoutDashboard className="h-6 w-6 text-blue-400" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Ready to expand?</h3>
-                <p className="text-gray-400 max-w-sm">This is your dashboard. You can now start building your custom modules and integrating with Neon DB.</p>
+            <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl p-8 h-64 flex flex-col items-center justify-center text-center hover:bg-white/10 transition-all cursor-pointer group">
+                <a href="/dashboard/workspaces" className="flex flex-col items-center w-full h-full justify-center">
+                    <div className="h-12 w-12 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                        <LayoutDashboard className="h-6 w-6 text-blue-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Ready to expand?</h3>
+                    <p className="text-gray-400 max-w-sm">Manage your Workspaces and start chatting with your documents.</p>
+                </a>
             </div>
         </div>
     );

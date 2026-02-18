@@ -1,4 +1,6 @@
-import prisma from '@/lib/prisma';
+import { db } from '@/lib/db';
+import { users } from '@/lib/schema';
+import { eq } from 'drizzle-orm';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 
@@ -6,20 +8,19 @@ export async function POST(request: Request) {
     try {
         const session = await auth();
 
-        if (!session || session.user?.role !== 'ADMIN') {
+        if (!session || session.user?.role !== 'admin') {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         const { userId, isApproved } = await request.json();
 
-        if (typeof userId !== 'string' || typeof isApproved !== 'boolean') {
+        if (typeof userId !== 'number' || typeof isApproved !== 'boolean') {
             return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
         }
 
-        await prisma.user.update({
-            where: { id: userId },
-            data: { isApproved }
-        });
+        await db.update(users)
+            .set({ isApproved })
+            .where(eq(users.id, userId));
 
         return NextResponse.json({ success: true });
     } catch (error) {
