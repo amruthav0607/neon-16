@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Users, Settings, LogOut, FileText, Youtube } from "lucide-react";
+import { LayoutDashboard, Users, Settings, LogOut, FileText, Youtube, Layers } from "lucide-react";
 import { signOut } from "@/auth";
 
 export default async function DashboardLayout({
@@ -43,6 +43,14 @@ export default async function DashboardLayout({
                             Manage Users
                         </Link>
                     )}
+
+                    <Link
+                        href="/dashboard/workspaces"
+                        className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/5 transition-all text-gray-300 hover:text-white"
+                    >
+                        <Layers className="h-5 w-5" />
+                        Workspaces
+                    </Link>
 
                     <Link
                         href="/dashboard/documents"
