@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert academic assistant. Summarize the following YouTube transcript into an executive summary and detailed study notes. Return the result in JSON format with keys 'summary' and 'studyNotes'. Both 'summary' and 'studyNotes' MUST be strings. Use markdown formatting for studyNotes with headers, bullet points, and key takeaways."
+                    content: "You are an expert academic assistant. Summarize the following YouTube transcript into an executive summary and detailed study notes. IMPORTANT: You MUST always write your response in ENGLISH, even if the transcript is in another language — translate and summarize into English. Return the result in JSON format with keys 'summary' and 'studyNotes'. Both 'summary' and 'studyNotes' MUST be strings in English. Use markdown formatting for studyNotes with headers, bullet points, and key takeaways."
                 },
                 {
                     role: "user",
