@@ -13,8 +13,8 @@ async function fetchTranscript(videoId: string, videoUrl: string): Promise<strin
 
     // Strategy 1: youtube-transcript-plus (more robust)
     try {
-        const { getTranscript } = await import("youtube-transcript-plus");
-        const transcript = await getTranscript(videoId);
+        const { fetchTranscript } = await import("youtube-transcript-plus");
+        const transcript = await fetchTranscript(videoId);
         if (transcript && transcript.length > 0) {
             const text = transcript.map((t: any) => t.text).join(" ");
             if (text.length > 50) {
@@ -64,7 +64,7 @@ async function fetchTranscript(videoId: string, videoUrl: string): Promise<strin
                 const captionXml = await captionResponse.text();
 
                 // Parse XML captions
-                const textSegments = captionXml.match(/<text[^>]*>(.*?)<\/text>/gs);
+                const textSegments = captionXml.match(/<text[^>]*>[\s\S]*?<\/text>/g);
                 if (textSegments && textSegments.length > 0) {
                     const text = textSegments
                         .map((s: string) => s.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"'))
