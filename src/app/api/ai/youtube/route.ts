@@ -7,295 +7,259 @@ const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
-// Client contexts to try — some work better from cloud IPs
-const INNERTUBE_CLIENTS = [
-    {
-        name: 'WEB',
-        context: {
-            client: {
-                clientName: 'WEB',
-                clientVersion: '2.20240530.00.00',
-                hl: 'en',
-                gl: 'US',
-            },
-        },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    },
-    {
-        name: 'ANDROID',
-        context: {
-            client: {
-                clientName: 'ANDROID',
-                clientVersion: '19.02.39',
-                androidSdkVersion: 34,
-                hl: 'en',
-                gl: 'US',
-            },
-        },
-        userAgent: 'com.google.android.youtube/19.02.39 (Linux; U; Android 14) gzip',
-    },
-    {
-        name: 'TV_EMBEDDED',
-        context: {
-            client: {
-                clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER',
-                clientVersion: '2.0',
-                hl: 'en',
-                gl: 'US',
-            },
-            thirdParty: {
-                embedUrl: 'https://www.google.com',
-            },
-        },
-        userAgent: 'Mozilla/5.0 (SMART-TV; Linux; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko)',
-    },
-];
+// ==================== TRANSCRIPT EXTRACTION STRATEGIES ====================
 
 /**
- * Fetch transcript using YouTube's Innertube Player API with multiple client contexts.
- * Tries each client context until one succeeds.
+ * Master function: tries 6 strategies in order of reliability for Vercel/cloud deployment.
+ * Piped & Invidious APIs are prioritized because they proxy through their own servers,
+ * bypassing YouTube's IP blocking of cloud providers like AWS/Vercel.
  */
 async function fetchTranscript(videoId: string): Promise<{ transcript: string; title: string }> {
     const errors: string[] = [];
 
-    // Strategy 1: Try each Innertube client context
-    for (const client of INNERTUBE_CLIENTS) {
+    const strategies = [
+        { name: 'Piped API', fn: () => fetchViaPipedAPI(videoId) },
+        { name: 'Invidious API', fn: () => fetchViaInvidiousAPI(videoId) },
+        { name: 'Innertube WEB', fn: () => fetchViaInnertube(videoId, 'WEB') },
+        { name: 'Innertube ANDROID', fn: () => fetchViaInnertube(videoId, 'ANDROID') },
+        { name: 'Page Scrape', fn: () => fetchViaPageScrape(videoId) },
+        { name: 'NPM Packages', fn: () => fetchViaNpm(videoId) },
+    ];
+
+    for (const strategy of strategies) {
         try {
-            const result = await fetchViaInnertube(videoId, client);
-            if (result.transcript.length > 50) {
-                console.log(`✅ Transcript via Innertube (${client.name}), length: ${result.transcript.length}`);
+            const result = await strategy.fn();
+            if (result.transcript && result.transcript.length > 50) {
+                console.log(`✅ Transcript via ${strategy.name}, length: ${result.transcript.length}`);
                 return result;
             }
         } catch (e: any) {
-            console.warn(`Innertube ${client.name} failed:`, e.message);
-            errors.push(`${client.name}: ${e.message}`);
+            console.warn(`${strategy.name} failed:`, e.message);
+            errors.push(`${strategy.name}: ${e.message}`);
         }
     }
 
-    // Strategy 2: Direct timedtext API
-    try {
-        const result = await fetchViaTimedText(videoId);
-        if (result.transcript.length > 50) {
-            console.log(`✅ Transcript via timedtext API, length: ${result.transcript.length}`);
-            return result;
-        }
-    } catch (e: any) {
-        console.warn('Timedtext API failed:', e.message);
-        errors.push(`timedtext: ${e.message}`);
-    }
-
-    // Strategy 3: Page scrape with consent bypass
-    try {
-        const result = await fetchViaPageScrape(videoId);
-        if (result.transcript.length > 50) {
-            console.log(`✅ Transcript via page scrape, length: ${result.transcript.length}`);
-            return result;
-        }
-    } catch (e: any) {
-        errors.push(`scrape: ${e.message}`);
-    }
-
-    // Strategy 4: NPM packages as final fallback
-    try {
-        const result = await fetchViaNpm(videoId);
-        if (result.transcript.length > 50) {
-            console.log(`✅ Transcript via NPM, length: ${result.transcript.length}`);
-            return result;
-        }
-    } catch (e: any) {
-        errors.push(`npm: ${e.message}`);
-    }
-
-    throw new Error(`All transcript strategies failed:\n${errors.join('\n')}`);
+    throw new Error(`All 6 transcript strategies failed:\n${errors.join('\n')}`);
 }
 
-async function fetchViaInnertube(
-    videoId: string,
-    client: typeof INNERTUBE_CLIENTS[0]
-): Promise<{ transcript: string; title: string }> {
-    const response = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': client.userAgent,
-            'X-YouTube-Client-Name': client.name === 'ANDROID' ? '3' : client.name === 'TV_EMBEDDED' ? '85' : '1',
-            'X-YouTube-Client-Version': client.context.client.clientVersion,
-            'Origin': 'https://www.youtube.com',
-            'Referer': 'https://www.youtube.com/',
-        },
-        body: JSON.stringify({
-            videoId,
-            context: client.context,
-            contentCheckOk: true,
-            racyCheckOk: true,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`Player API HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    const title = data.videoDetails?.title || '';
-
-    // Check playability
-    if (data.playabilityStatus?.status === 'ERROR') {
-        throw new Error(data.playabilityStatus.reason || 'Video unavailable');
-    }
-
-    const captionTracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-    if (!captionTracks || captionTracks.length === 0) {
-        throw new Error('No caption tracks available');
-    }
-
-    // Find English track, fall back to any available
-    const track = captionTracks.find((t: any) =>
-        t.languageCode === 'en' || t.languageCode?.startsWith('en')
-    ) || captionTracks[0];
-
-    if (!track?.baseUrl) {
-        throw new Error('No caption URL found');
-    }
-
-    // Add translation if not English
-    let url = track.baseUrl;
-    if (!track.languageCode?.startsWith('en')) {
-        url += (url.includes('?') ? '&' : '?') + 'tlang=en';
-    }
-    // Request JSON3 format
-    url += (url.includes('?') ? '&' : '?') + 'fmt=json3';
-
-    const captionRes = await fetch(url, {
-        headers: { 'User-Agent': client.userAgent },
-    });
-
-    if (!captionRes.ok) {
-        // Try XML format instead
-        const xmlUrl = url.replace('fmt=json3', 'fmt=srv3');
-        const xmlRes = await fetch(xmlUrl, { headers: { 'User-Agent': client.userAgent } });
-        const xmlText = await xmlRes.text();
-        return { transcript: parseXmlCaptions(xmlText), title };
-    }
-
-    const captionText = await captionRes.text();
-
-    // Try JSON3 parse
-    try {
-        const json = JSON.parse(captionText);
-        if (json.events) {
-            const transcript = json.events
-                .filter((e: any) => e.segs)
-                .map((e: any) => e.segs.map((s: any) => s.utf8 || '').join(''))
-                .join(' ')
-                .replace(/\n/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-            if (transcript.length > 50) return { transcript, title };
-        }
-    } catch {
-        // Try XML parse
-        return { transcript: parseXmlCaptions(captionText), title };
-    }
-
-    throw new Error('Caption content was empty');
-}
-
-// Strategy 2: Direct timedtext API endpoint
-async function fetchViaTimedText(videoId: string): Promise<{ transcript: string; title: string }> {
-    // Try common timedtext URLs
-    const urls = [
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&fmt=json3`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr&fmt=json3`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en`,
-        `https://www.youtube.com/api/timedtext?v=${videoId}&lang=en&kind=asr`,
+// ── Strategy 1: Piped API (proxy, not blocked by YouTube) ──────────────────
+async function fetchViaPipedAPI(videoId: string): Promise<{ transcript: string; title: string }> {
+    const pipedInstances = [
+        'https://pipedapi.kavin.rocks',
+        'https://pipedapi.adminforge.de',
+        'https://api.piped.projectsegfau.lt',
     ];
 
-    for (const url of urls) {
+    for (const instance of pipedInstances) {
         try {
-            const res = await fetch(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-                },
+            const res = await fetch(`${instance}/streams/${videoId}`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' },
+                signal: AbortSignal.timeout(10000),
             });
 
             if (!res.ok) continue;
 
-            const text = await res.text();
-            if (!text || text.length < 10) continue;
+            const data = await res.json();
+            const title = data.title || '';
 
-            // Try JSON3
-            try {
-                const json = JSON.parse(text);
-                if (json.events) {
-                    const transcript = json.events
-                        .filter((e: any) => e.segs)
-                        .map((e: any) => e.segs.map((s: any) => s.utf8 || '').join(''))
-                        .join(' ')
-                        .replace(/\n/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-                    if (transcript.length > 50) return { transcript, title: '' };
+            // Get subtitle tracks
+            const subtitles = data.subtitles || [];
+            if (subtitles.length === 0) continue;
+
+            // Find English subtitles
+            const enSub = subtitles.find((s: any) =>
+                s.code === 'en' || s.code?.startsWith('en')
+            ) || subtitles[0];
+
+            if (!enSub?.url) continue;
+
+            // Fetch the subtitle content
+            let subUrl = enSub.url;
+            // Request translation if not English
+            if (!enSub.code?.startsWith('en') && !subUrl.includes('tlang=en')) {
+                subUrl += (subUrl.includes('?') ? '&' : '?') + 'tlang=en';
+            }
+
+            const subRes = await fetch(subUrl, { signal: AbortSignal.timeout(10000) });
+            const subText = await subRes.text();
+
+            // Parse (could be XML or VTT)
+            const transcript = subText.includes('<text')
+                ? parseXmlCaptions(subText)
+                : parseVttCaptions(subText);
+
+            if (transcript.length > 50) return { transcript, title };
+        } catch {
+            continue;
+        }
+    }
+
+    throw new Error('All Piped instances failed');
+}
+
+// ── Strategy 2: Invidious API (proxy, not blocked by YouTube) ──────────────
+async function fetchViaInvidiousAPI(videoId: string): Promise<{ transcript: string; title: string }> {
+    const invidiousInstances = [
+        'https://inv.nadeko.net',
+        'https://invidious.nerdvpn.de',
+        'https://invidious.privacyredirect.com',
+        'https://vid.puffyan.us',
+    ];
+
+    for (const instance of invidiousInstances) {
+        try {
+            // Get video info for title
+            const videoRes = await fetch(`${instance}/api/v1/videos/${videoId}?fields=title,captions`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' },
+                signal: AbortSignal.timeout(10000),
+            });
+
+            if (!videoRes.ok) continue;
+
+            const videoData = await videoRes.json();
+            const title = videoData.title || '';
+
+            // Get captions
+            const captions = videoData.captions || [];
+            if (captions.length === 0) {
+                // Try direct captions endpoint
+                const capRes = await fetch(`${instance}/api/v1/captions/${videoId}`, {
+                    signal: AbortSignal.timeout(10000),
+                });
+                if (!capRes.ok) continue;
+                const capData = await capRes.json();
+                if (!capData.captions?.length) continue;
+
+                const enCap = capData.captions.find((c: any) =>
+                    c.language_code === 'en' || c.label?.toLowerCase().includes('english')
+                ) || capData.captions[0];
+
+                if (!enCap?.label) continue;
+
+                // Fetch caption content
+                let capUrl = `${instance}/api/v1/captions/${videoId}?label=${encodeURIComponent(enCap.label)}`;
+                if (!enCap.language_code?.startsWith('en')) {
+                    capUrl += '&tlang=en';
                 }
-            } catch {
-                // Try XML
-                const transcript = parseXmlCaptions(text);
-                if (transcript.length > 50) return { transcript, title: '' };
+
+                const textRes = await fetch(capUrl, { signal: AbortSignal.timeout(10000) });
+                const textContent = await textRes.text();
+                const transcript = textContent.includes('<text')
+                    ? parseXmlCaptions(textContent)
+                    : parseVttCaptions(textContent);
+
+                if (transcript.length > 50) return { transcript, title };
+            } else {
+                const enCap = captions.find((c: any) =>
+                    c.language_code === 'en' || c.label?.toLowerCase().includes('english')
+                ) || captions[0];
+
+                let capUrl = `${instance}${enCap.url || `/api/v1/captions/${videoId}?label=${encodeURIComponent(enCap.label)}`}`;
+                if (!enCap.language_code?.startsWith('en')) {
+                    capUrl += (capUrl.includes('?') ? '&' : '?') + 'tlang=en';
+                }
+
+                const textRes = await fetch(capUrl, { signal: AbortSignal.timeout(10000) });
+                const textContent = await textRes.text();
+                const transcript = textContent.includes('<text')
+                    ? parseXmlCaptions(textContent)
+                    : parseVttCaptions(textContent);
+
+                if (transcript.length > 50) return { transcript, title };
             }
         } catch {
             continue;
         }
     }
 
-    throw new Error('All timedtext URLs failed');
+    throw new Error('All Invidious instances failed');
 }
 
-// Strategy 3: Page scrape with consent bypass
-async function fetchViaPageScrape(videoId: string): Promise<{ transcript: string; title: string }> {
-    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en&bpctr=9999999999&has_verified=1`, {
-        headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cookie': 'CONSENT=PENDING+999',
+// ── Strategy 3 & 4: YouTube Innertube Player API ───────────────────────────
+async function fetchViaInnertube(videoId: string, clientType: 'WEB' | 'ANDROID'): Promise<{ transcript: string; title: string }> {
+    const clients: Record<string, any> = {
+        WEB: {
+            context: { client: { clientName: 'WEB', clientVersion: '2.20240530.00.00', hl: 'en', gl: 'US' } },
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36',
+            clientId: '1',
         },
+        ANDROID: {
+            context: { client: { clientName: 'ANDROID', clientVersion: '19.02.39', androidSdkVersion: 34, hl: 'en', gl: 'US' } },
+            userAgent: 'com.google.android.youtube/19.02.39 (Linux; U; Android 14) gzip',
+            clientId: '3',
+        },
+    };
+
+    const client = clients[clientType];
+
+    const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': client.userAgent,
+            'X-YouTube-Client-Name': client.clientId,
+            'X-YouTube-Client-Version': client.context.client.clientVersion,
+            'Origin': 'https://www.youtube.com',
+        },
+        body: JSON.stringify({ videoId, context: client.context, contentCheckOk: true, racyCheckOk: true }),
+        signal: AbortSignal.timeout(15000),
     });
 
-    const html = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    // Extract title
-    const titleMatch = html.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    const title = titleMatch ? titleMatch[1] : '';
+    const data = await res.json();
+    const title = data.videoDetails?.title || '';
+    const tracks = data.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (!tracks?.length) throw new Error('No captions');
 
-    // Find captionTracks
-    const captionMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])/);
-    if (!captionMatch) throw new Error('No captions in page HTML');
-
-    const tracks = JSON.parse(captionMatch[1]);
-    if (!tracks.length) throw new Error('Empty caption tracks');
-
-    const track = tracks.find((t: any) =>
-        t.languageCode === 'en' || t.vssId?.includes('.en')
-    ) || tracks[0];
-
+    const track = tracks.find((t: any) => t.languageCode?.startsWith('en')) || tracks[0];
     if (!track?.baseUrl) throw new Error('No caption URL');
 
     let url = track.baseUrl;
-    if (!track.languageCode?.startsWith('en')) {
-        url += '&tlang=en';
-    }
+    if (!track.languageCode?.startsWith('en')) url += '&tlang=en';
 
-    const captionRes = await fetch(url);
-    const captionXml = await captionRes.text();
+    const capRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const capText = await capRes.text();
 
-    return { transcript: parseXmlCaptions(captionXml), title };
+    return { transcript: parseXmlCaptions(capText), title };
 }
 
-// Strategy 4: NPM packages
+// ── Strategy 5: YouTube page scrape with consent bypass ────────────────────
+async function fetchViaPageScrape(videoId: string): Promise<{ transcript: string; title: string }> {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cookie': 'CONSENT=PENDING+999',
+        },
+        signal: AbortSignal.timeout(15000),
+    });
+
+    const html = await res.text();
+    const titleMatch = html.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const title = titleMatch ? titleMatch[1] : '';
+
+    const capMatch = html.match(/"captionTracks"\s*:\s*(\[.*?\])/);
+    if (!capMatch) throw new Error('No captions in HTML');
+
+    const tracks = JSON.parse(capMatch[1]);
+    const track = tracks.find((t: any) => t.languageCode?.startsWith('en')) || tracks[0];
+    if (!track?.baseUrl) throw new Error('No caption URL');
+
+    let url = track.baseUrl;
+    if (!track.languageCode?.startsWith('en')) url += '&tlang=en';
+
+    const capRes = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    return { transcript: parseXmlCaptions(await capRes.text()), title };
+}
+
+// ── Strategy 6: NPM packages ──────────────────────────────────────────────
 async function fetchViaNpm(videoId: string): Promise<{ transcript: string; title: string }> {
     const errors: string[] = [];
 
     try {
-        const { fetchTranscript: ftPlus } = await import("youtube-transcript-plus");
-        const result = await ftPlus(videoId);
+        const { fetchTranscript: ft } = await import("youtube-transcript-plus");
+        const result = await ft(videoId);
         if (result?.length > 0) {
             const text = result.map((t: any) => t.text).join(" ");
             if (text.length > 50) return { transcript: text, title: '' };
@@ -312,19 +276,30 @@ async function fetchViaNpm(videoId: string): Promise<{ transcript: string; title
     throw new Error(errors.join('; '));
 }
 
-// Parse YouTube XML captions to plain text
+// ==================== PARSERS =============================================
+
 function parseXmlCaptions(xml: string): string {
     const segments = xml.match(/<text[^>]*>[\s\S]*?<\/text>/g);
-    if (!segments?.length) throw new Error('No text segments in caption XML');
-
+    if (!segments?.length) throw new Error('No text in XML');
     return segments
         .map(s => s.replace(/<[^>]*>/g, '')
             .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
             .replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/\n/g, ' '))
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .join(' ').replace(/\s+/g, ' ').trim();
 }
+
+function parseVttCaptions(vtt: string): string {
+    return vtt.split('\n')
+        .filter(line =>
+            !line.startsWith('WEBVTT') && !line.startsWith('Kind:') && !line.startsWith('Language:') &&
+            !line.match(/^\d{2}:\d{2}/) && !line.match(/^align:/) && !line.match(/^position:/) &&
+            !line.match(/^\s*$/) && !line.match(/^NOTE/)
+        )
+        .map(line => line.replace(/<[^>]*>/g, ''))
+        .join(' ').replace(/\s+/g, ' ').trim();
+}
+
+// ==================== API ROUTE ===========================================
 
 export async function POST(req: NextRequest) {
     const session = await auth();
@@ -335,7 +310,6 @@ export async function POST(req: NextRequest) {
     try {
         const { videoUrl, transcript: manualTranscript } = await req.json();
 
-        // Allow either a URL or a manually pasted transcript
         if (!videoUrl && !manualTranscript) {
             return NextResponse.json({ error: "Video URL or transcript text is required" }, { status: 400 });
         }
@@ -345,7 +319,6 @@ export async function POST(req: NextRequest) {
         let videoId = "";
 
         if (manualTranscript && manualTranscript.trim().length > 50) {
-            // Use manually pasted transcript
             transcriptText = manualTranscript.trim();
             videoId = videoUrl ? (extractVideoId(videoUrl) || 'manual') : 'manual';
             videoTitle = videoUrl ? `Video ${videoId}` : 'Manual Transcript Analysis';
@@ -365,7 +338,7 @@ export async function POST(req: NextRequest) {
             } catch (e: any) {
                 console.error("All transcript methods failed:", e.message);
                 return NextResponse.json({
-                    error: "Failed to fetch transcript. Try pasting the transcript manually using the text box below.",
+                    error: "Failed to fetch transcript. Try pasting the transcript manually using the 'Paste Transcript' tab.",
                     details: e.message
                 }, { status: 400 });
             }
@@ -377,10 +350,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Transcript is too short or empty." }, { status: 400 });
         }
 
-        console.log("Transcript extracted, length:", transcriptText.length);
+        console.log("Transcript ready, length:", transcriptText.length);
 
-        // 2. AI Summarization
-        console.log("Calling Groq for summarization...");
+        // AI Summarization
+        console.log("Calling Groq...");
         const chatCompletion = await groq.chat.completions.create({
             messages: [
                 {
@@ -409,7 +382,6 @@ Example format:
         const rawContent = chatCompletion.choices[0]?.message?.content || '';
         if (!rawContent) throw new Error("AI returned empty content");
 
-        // Robust JSON parsing
         let summary = "";
         let studyNotes = "";
 
@@ -421,13 +393,13 @@ Example format:
                 studyNotes = Array.isArray(content.studyNotes) ? content.studyNotes.join("\n") : (content.studyNotes || "");
             }
         } catch {
-            console.warn("JSON parse failed, using fallback extraction");
-            const summaryMatch = rawContent.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-            if (summaryMatch) summary = summaryMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            console.warn("JSON parse failed, using fallback");
+            const sm = rawContent.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (sm) summary = sm[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
 
-            const notesStart = rawContent.indexOf('"studyNotes"');
-            if (notesStart !== -1) {
-                let nc = rawContent.substring(notesStart + '"studyNotes"'.length);
+            const ns = rawContent.indexOf('"studyNotes"');
+            if (ns !== -1) {
+                let nc = rawContent.substring(ns + '"studyNotes"'.length);
                 const qm = nc.match(/^\s*:\s*"((?:[^"\\]|\\.)*)"/);
                 if (qm) {
                     studyNotes = qm[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
@@ -445,12 +417,11 @@ Example format:
             }
         }
 
-        console.log("✅ AI summarization complete.");
+        console.log("✅ Summarization complete.");
 
-        // 3. Save to DB
         const note = await prisma.youTubeNote.create({
             data: {
-                videoUrl,
+                videoUrl: videoUrl || `manual://${videoId}`,
                 videoTitle,
                 summary: summary || "",
                 studyNotes: studyNotes || "",
