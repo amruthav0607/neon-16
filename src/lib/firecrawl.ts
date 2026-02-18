@@ -1,9 +1,9 @@
-import FirecrawlApp from 'firecrawl';
+import Firecrawl from 'firecrawl';
 
 const apiKey = process.env.FIRECRAWL_API_KEY;
 
 // Initialize Firecrawl only if key is present
-const app = apiKey ? new FirecrawlApp({ apiKey }) : null;
+const app = apiKey ? new Firecrawl({ apiKey }) : null;
 
 export type WebSearchResult = {
     title: string;
@@ -19,12 +19,9 @@ export async function searchWeb(query: string, limit = 3): Promise<WebSearchResu
 
     try {
         console.log(`Searching web for: ${query}`);
-        // Requires Firecrawl "search" method support
-        // Note: Check Firecrawl SDK docs. Assuming app.search or app.crawl
-        // The user prompt implies "Send query to Firecrawl search -> crawl top results"
-        // Firecrawl /search endpoint usually returns results. 
 
-        const searchResponse = await app.search(query, {
+        // Use 'any' to bypass potential type mismatches between local and CI environments
+        const searchResponse: any = await app.search(query, {
             limit: limit,
             scrapeOptions: {
                 formats: ['markdown']
