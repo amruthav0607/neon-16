@@ -308,22 +308,70 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { videoUrl, transcript: manualTranscript } = await req.json();
+        const { videoUrl, transcript: manualTranscript, screenshot } = await req.json();
 
-        if (!videoUrl && !manualTranscript) {
-            return NextResponse.json({ error: "Video URL or transcript text is required" }, { status: 400 });
+        if (!videoUrl && !manualTranscript && !screenshot) {
+            return NextResponse.json({ error: "Video URL, transcript text, or screenshot is required" }, { status: 400 });
         }
 
         let transcriptText = "";
         let videoTitle = "";
         let videoId = "";
 
-        if (manualTranscript && manualTranscript.trim().length > 50) {
+        // Strategy A: Screenshot — use vision AI to extract text
+        if (screenshot) {
+            console.log("Processing screenshot via vision AI...");
+            videoTitle = "Screenshot Transcript Analysis";
+            videoId = "screenshot";
+
+            try {
+                const visionCompletion = await groq.chat.completions.create({
+                    messages: [
+                        {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "text",
+                                    text: "Extract ALL the text visible in this screenshot. This is a YouTube transcript screenshot. Return ONLY the raw transcript text, nothing else. Do not add any commentary, labels, or formatting — just the plain text content from the image."
+                                },
+                                {
+                                    type: "image_url",
+                                    image_url: {
+                                        url: screenshot,
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    model: "llama-3.2-90b-vision-preview",
+                    temperature: 0.1,
+                    max_tokens: 8000,
+                });
+
+                transcriptText = visionCompletion.choices[0]?.message?.content || '';
+                console.log("Vision AI extracted text, length:", transcriptText.length);
+
+                if (transcriptText.length < 20) {
+                    return NextResponse.json({
+                        error: "Could not read enough text from the screenshot. Please try a clearer image or paste the transcript manually."
+                    }, { status: 400 });
+                }
+            } catch (e: any) {
+                console.error("Vision AI failed:", e.message);
+                return NextResponse.json({
+                    error: "Failed to read the screenshot. " + (e.message || "Please try again or paste the transcript manually."),
+                }, { status: 400 });
+            }
+        }
+        // Strategy B: Manual transcript
+        else if (manualTranscript && manualTranscript.trim().length > 50) {
             transcriptText = manualTranscript.trim();
             videoId = videoUrl ? (extractVideoId(videoUrl) || 'manual') : 'manual';
             videoTitle = videoUrl ? `Video ${videoId}` : 'Manual Transcript Analysis';
             console.log("Using manually pasted transcript, length:", transcriptText.length);
-        } else if (videoUrl) {
+        }
+        // Strategy C: YouTube URL auto-extraction
+        else if (videoUrl) {
             videoId = extractVideoId(videoUrl) || '';
             if (!videoId) {
                 return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
@@ -338,7 +386,7 @@ export async function POST(req: NextRequest) {
             } catch (e: any) {
                 console.error("All transcript methods failed:", e.message);
                 return NextResponse.json({
-                    error: "Failed to fetch transcript. Try pasting the transcript manually using the 'Paste Transcript' tab.",
+                    error: "Failed to fetch transcript. Try the 'Paste Text' or 'Screenshot' tab instead.",
                     details: e.message
                 }, { status: 400 });
             }
