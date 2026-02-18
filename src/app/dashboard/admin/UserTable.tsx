@@ -16,7 +16,7 @@ interface User {
     email: string;
     role: string;
     isApproved: boolean;
-    createdAt: Date;
+    createdAt: string;
 }
 
 export default function UserTable({ initialUsers }: { initialUsers: User[] }) {
