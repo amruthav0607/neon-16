@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import prisma from "@/lib/prisma";
 import { Groq } from "groq-sdk";
-import ytdl from "@distube/ytdl-core";
+import ytdl from "yt-dlp-exec";
 
 const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
@@ -30,63 +30,93 @@ export async function POST(req: NextRequest) {
         let transcriptText = manualTranscript || "";
 
         if (!transcriptText) {
-            console.log("Fetching transcript using @distube/ytdl-core for:", videoId);
+            console.log("Fetching transcript using yt-dlp for:", videoId);
             try {
-                // 1. Get Video Info with Cookies (if available)
-                const agentOptions: any = {};
-                if (process.env.YOUTUBE_COOKIES) {
-                    try {
-                        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES);
-                        agentOptions.cookies = cookies;
-                        console.log("Using provided YouTube cookies.");
-                    } catch (e) {
-                        console.warn("Failed to parse YOUTUBE_COOKIES:", e);
-                    }
-                }
-
-                const agent = ytdl.createAgent(Array.isArray(agentOptions.cookies) ? agentOptions.cookies : undefined);
-                const info = await ytdl.getInfo(videoUrl, { agent });
-                const tracks = info.player_response.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-
-                if (!tracks || tracks.length === 0) {
-                    throw new Error("No captions found for this video.");
-                }
-
-                // 2. Find English or fallback to first
-                // Logic: Try exact 'en' -> Try 'en-*' (e.g. en-US) -> Fallback to first available
-                const track = tracks.find((t: any) => t.languageCode === 'en')
-                    || tracks.find((t: any) => t.languageCode?.startsWith('en'))
-                    || tracks[0];
-
-                console.log(`Selected track: ${track.name.simpleText} (${track.languageCode})`);
-
-                // 3. Fetch Transcript JSON
-                const response = await fetch(`${track.baseUrl}&fmt=json3`, {
-                    headers: {
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                    }
+                // Use yt-dlp to dump JSON info including subtitles
+                const output = await ytdl(videoUrl, {
+                    dumpSingleJson: true,
+                    noWarnings: true,
+                    noCheckCertificates: true,
+                    preferFreeFormats: true,
+                    skipDownload: true, // We only want metadata/subs
+                    // writeAutoSub: true, // REMOVED: causes file write error on Vercel
+                    // writeSub: true,     // REMOVED: causes file write error on Vercel
+                    subLang: 'en,en-US,en-GB', // Prefer English
                 });
 
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch transcript content: ${response.statusText}`);
+                // yt-dlp returns the full video info object
+                // We need to parse the requested subtitles or automatic captions
+
+                // Helper to extract caption text from the nested structure
+                // Note: yt-dlp structure for captions can be complex. 
+                // Often it's easier to use `write-auto-sub` and read the file, 
+                // BUT for a Vercel/Serverless environment, file systems are ephemeral/readonly.
+                // 
+                // A better approach for the API is to use the `getTranscript` capability if available via the wrapper,
+                // OR simpler: use `yt-dlp` to get the *automatic_captions* URL and fetch it.
+
+                const captions = output.automatic_captions || output.subtitles;
+
+                let captionUrl = null;
+                const preferredLangs = ['en', 'en-US', 'en-GB', 'en-orig'];
+
+                // Try to find a valid English caption URL
+                if (captions) {
+                    for (const lang of preferredLangs) {
+                        if (captions[lang]) {
+                            // Find 'json3' format for easier parsing, or 'vtt'
+                            const track = captions[lang].find((c: any) => c.ext === 'json3')
+                                || captions[lang].find((c: any) => c.ext === 'json3');
+
+                            if (track) {
+                                captionUrl = track.url;
+                                break;
+                            }
+                        }
+                    }
+                    // Fallback to first available English if no json3 found
+                    if (!captionUrl && captions['en']) {
+                        captionUrl = captions['en'][0].url;
+                    }
                 }
 
-                const json = await response.json();
+                if (!captionUrl) {
+                    throw new Error("No English captions found (checked automatic & manual).");
+                }
 
-                // 4. Parse JSON events
-                if (json.events) {
-                    transcriptText = json.events
-                        .map((e: any) => e.segs ? e.segs.map((s: any) => s.utf8).join('') : '')
-                        .join(' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
+                console.log("Found caption URL, fetching...");
+                const response = await fetch(captionUrl);
+                if (!response.ok) throw new Error("Failed to fetch caption file");
+
+                // If it's json3, we parse it. If it's VTT/SRT (from fallback), we might need parsing.
+                // Assuming json3 for now as we prioritized it.
+                // If URL doesn't look like json3, we might receive XML or VTT.
+                // For robustness, let's assume we grabbed the standard YouTube JSON format if we used the standard scraping logic,
+                // but yt-dlp gives us the direct file URL.
+
+                const text = await response.text();
+
+                // Simple check if it's JSON
+                if (text.trim().startsWith('{')) {
+                    const json = JSON.parse(text);
+                    if (json.events) {
+                        transcriptText = json.events
+                            .map((e: any) => e.segs ? e.segs.map((s: any) => s.utf8).join('') : '')
+                            .join(' ')
+                            .replace(/\s+/g, ' ')
+                            .trim();
+                    }
+                } else {
+                    // It might be VTT/XML.
+                    // Fallback: simple regex strip tags (crude but often enough for summary)
+                    transcriptText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                 }
 
             } catch (e: any) {
                 console.error("Transcript fetch error:", e);
                 // Return specific error to client to trigger manual input UI
                 return NextResponse.json({
-                    error: "Failed to fetch transcript. Video might be restricted.",
+                    error: "Failed to fetch transcript (yt-dlp). Video might be restricted.",
                     details: e.message,
                     requiresManualInput: true
                 }, { status: 400 });

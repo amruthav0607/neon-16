@@ -15,11 +15,13 @@ async function testApi() {
         console.log('Response Body:', JSON.stringify(data, null, 2));
 
         if (data.requiresManualInput) {
-            console.log('SUCCESS: API is returning `requiresManualInput` flag.');
-        } else if (data.error && data.error.includes('lacking captions')) {
-            console.log('FAILURE: API is returning OLD error message. Server is stale.');
+            console.log('PARTIAL SUCCESS: API returned `requiresManualInput` (Fallback active).');
+        } else if (data.summary || data.videoTitle) {
+            console.log('SUCCESS: API returned summary/notes! yt-dlp worked.');
+        } else if (data.error) {
+            console.log('FAILURE: API returned error:', data.error);
         } else {
-            console.log('UNCERTAIN: Received error but not the expected flag or old message.');
+            console.log('UNCERTAIN: Received unknown response.');
         }
 
     } catch (error) {
