@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Users, Settings, LogOut, FileText, Youtube, Layers } from "lucide-react";
+import { LayoutDashboard, Users, Settings, LogOut, FileText, Youtube, Layers, Search } from "lucide-react";
 import { signOut } from "@/auth";
 
 export default async function DashboardLayout({
@@ -66,6 +66,14 @@ export default async function DashboardLayout({
                     >
                         <Youtube className="h-5 w-5" />
                         YouTube Summarizer
+                    </Link>
+
+                    <Link
+                        href="/dashboard/deep-search"
+                        className="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/5 transition-all text-gray-300 hover:text-white"
+                    >
+                        <Search className="h-5 w-5" />
+                        Deep Search
                     </Link>
 
                     <Link
