@@ -25,22 +25,20 @@ export async function searchWeb(query: string, limit = 3): Promise<WebSearchResu
         // Firecrawl /search endpoint usually returns results. 
 
         const searchResponse = await app.search(query, {
-            pageOptions: {
-                fetchPageContent: true // Get content directly
-            },
-            searchOptions: {
-                limit: limit
+            limit: limit,
+            scrapeOptions: {
+                formats: ['markdown']
             }
         });
 
-        if (!searchResponse || !searchResponse.data) {
+        if (!searchResponse || !searchResponse.web) {
             return [];
         }
 
-        return searchResponse.data.map((item: any) => ({
-            title: item.metadata?.title || item.url,
+        return searchResponse.web.map((item: any) => ({
+            title: item.title || item.url,
             url: item.url,
-            content: item.markdown || item.content || ""
+            content: item.markdown || item.content || item.description || ""
         }));
 
     } catch (error) {
