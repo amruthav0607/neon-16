@@ -33,9 +33,10 @@ export default function YouTubeForm() {
             const data = await res.json();
 
             if (!res.ok) {
-                if (data.requiresManualInput) {
+                // Check for flag OR error text (double safety)
+                if (data.requiresManualInput || (data.error && data.error.includes("restricted"))) {
                     setShowManualInput(true);
-                    throw new Error("Unable to fetch transcript automatically. Please paste it manually below.");
+                    throw new Error("Unable to fetch transcript automatically. Please paste it below.");
                 }
                 throw new Error(data.error || "Failed to process video");
             }
@@ -55,7 +56,7 @@ export default function YouTubeForm() {
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 p-8 md:p-10 rounded-[2rem] shadow-2xl mb-12">
             <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
                 <Youtube className="text-red-500 h-8 w-8" />
-                Analyze New Video
+                Analyze New Video <span className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded ml-2">v2.1</span>
             </h2>
             <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="relative">
