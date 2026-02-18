@@ -4,6 +4,10 @@ import prisma from "@/lib/prisma";
 import { Groq } from "groq-sdk";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { readFile, mkdir, rm, readdir } from "fs/promises";
+import { join } from "path";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 
 const execAsync = promisify(exec);
 
@@ -11,91 +15,77 @@ const groq = new Groq({
     apiKey: process.env.GROQ_API_KEY,
 });
 
-// yt-dlp based transcript extraction (most reliable)
+// yt-dlp: download subtitles to temp dir, read, parse, cleanup
 async function fetchTranscriptWithYtDlp(videoUrl: string): Promise<string> {
+    const tempDir = join(tmpdir(), `yt_subs_${randomUUID()}`);
+
     try {
-        // Use yt-dlp to extract auto-generated or manual subtitles
-        const { stdout } = await execAsync(
-            `yt-dlp --skip-download --write-auto-sub --write-sub --sub-lang "en.*,en" --sub-format vtt --print-to-file "%(requested_subtitles)j" - -o - "${videoUrl}"`,
+        await mkdir(tempDir, { recursive: true });
+
+        // Download subtitles (try manual subs first, then auto-generated)
+        await execAsync(
+            `yt-dlp --skip-download --write-sub --write-auto-sub --sub-lang "en.*,en" --sub-format vtt -o "${join(tempDir, 'sub')}" "${videoUrl}"`,
             { timeout: 30000 }
         );
-        console.log("yt-dlp subtitle info:", stdout.substring(0, 200));
-    } catch (e) {
-        // Expected to fail on print, we'll use the direct approach instead
-    }
 
-    // Direct approach: extract subtitles as JSON
-    try {
-        const { stdout } = await execAsync(
-            `yt-dlp --skip-download --write-auto-sub --write-sub --sub-lang "en.*,en" --sub-format json3 --dump-json "${videoUrl}"`,
-            { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }
-        );
+        // Find the downloaded .vtt file
+        const files = await readdir(tempDir);
+        const vttFile = files.find(f => f.endsWith('.vtt'));
 
-        const videoInfo = JSON.parse(stdout);
-
-        // Check if subtitles are available
-        const subtitles = videoInfo.subtitles || {};
-        const autoSubs = videoInfo.automatic_captions || {};
-
-        // Find English subtitles (manual first, then auto)
-        let subUrl = "";
-        const enKeys = Object.keys(subtitles).filter(k => k.startsWith('en'));
-        const autoEnKeys = Object.keys(autoSubs).filter(k => k.startsWith('en'));
-
-        if (enKeys.length > 0) {
-            const formats = subtitles[enKeys[0]];
-            const json3 = formats.find((f: any) => f.ext === 'json3') || formats.find((f: any) => f.ext === 'vtt') || formats[0];
-            subUrl = json3?.url;
-        } else if (autoEnKeys.length > 0) {
-            const formats = autoSubs[autoEnKeys[0]];
-            const json3 = formats.find((f: any) => f.ext === 'json3') || formats.find((f: any) => f.ext === 'vtt') || formats[0];
-            subUrl = json3?.url;
+        if (!vttFile) {
+            throw new Error("No subtitle file was downloaded — video may not have English captions");
         }
 
-        if (subUrl) {
-            const response = await fetch(subUrl);
-            const subData = await response.text();
+        const vttContent = await readFile(join(tempDir, vttFile), 'utf-8');
 
-            // Try parsing as JSON3 format
-            try {
-                const json = JSON.parse(subData);
-                if (json.events) {
-                    const text = json.events
-                        .filter((e: any) => e.segs)
-                        .map((e: any) => e.segs.map((s: any) => s.utf8).join(''))
-                        .join(' ')
-                        .replace(/\n/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-                    if (text.length > 50) return text;
-                }
-            } catch {
-                // Not JSON, try as VTT
-                const text = subData
-                    .replace(/WEBVTT[\s\S]*?\n\n/, '')
-                    .replace(/\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}[^\n]*/g, '')
-                    .replace(/<[^>]*>/g, '')
-                    .replace(/\n+/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-                if (text.length > 50) return text;
+        // Parse VTT to plain text
+        const text = vttContent
+            .split('\n')
+            .filter(line =>
+                !line.startsWith('WEBVTT') &&
+                !line.startsWith('Kind:') &&
+                !line.startsWith('Language:') &&
+                !line.match(/^\d{2}:\d{2}/) &&       // timestamp lines
+                !line.match(/^align:/) &&
+                !line.match(/^position:/) &&
+                !line.match(/^\s*$/) &&                // empty lines
+                !line.match(/^NOTE/)
+            )
+            .map(line => line.replace(/<[^>]*>/g, ''))  // strip HTML tags
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        // Deduplicate (VTT auto-subs often repeat lines)
+        const words = text.split(' ');
+        const deduped: string[] = [];
+        for (let i = 0; i < words.length; i++) {
+            if (i < 3 || words[i] !== words[i - 1] || words[i] !== words[i - 2]) {
+                deduped.push(words[i]);
             }
         }
 
-        // Fallback: try to get description if no subs
-        if (videoInfo.description && videoInfo.description.length > 200) {
-            console.log("No subtitles found, using video description as fallback");
-            return `[Video Description - No subtitles available]\n${videoInfo.description}`;
-        }
-
-        throw new Error("No English subtitles or captions found for this video");
-    } catch (e: any) {
-        if (e.message?.includes("No English subtitles")) throw e;
-        throw new Error(`yt-dlp failed: ${e.message}`);
+        return deduped.join(' ');
+    } finally {
+        // Cleanup temp dir
+        await rm(tempDir, { recursive: true, force: true }).catch(() => { });
     }
 }
 
-// Fallback: npm package based extraction
+// Get video title via yt-dlp
+async function getVideoTitle(videoUrl: string): Promise<string> {
+    try {
+        const { stdout } = await execAsync(
+            `yt-dlp --skip-download --print title "${videoUrl}"`,
+            { timeout: 15000 }
+        );
+        return stdout.trim();
+    } catch {
+        return "";
+    }
+}
+
+// NPM fallback
 async function fetchTranscriptWithNpm(videoId: string, videoUrl: string): Promise<string> {
     const errors: string[] = [];
 
@@ -119,7 +109,7 @@ async function fetchTranscriptWithNpm(videoId: string, videoUrl: string): Promis
         errors.push(e.message);
     }
 
-    throw new Error(`NPM transcript methods failed: ${errors.join('; ')}`);
+    throw new Error(`NPM methods failed: ${errors.join('; ')}`);
 }
 
 export async function POST(req: NextRequest) {
@@ -146,18 +136,18 @@ export async function POST(req: NextRequest) {
         let transcriptText = "";
         const allErrors: string[] = [];
 
-        // Strategy 1: yt-dlp (most reliable)
+        // Strategy 1: yt-dlp (most reliable locally)
         try {
             transcriptText = await fetchTranscriptWithYtDlp(videoUrl);
-            console.log("✅ Transcript fetched via yt-dlp, length:", transcriptText.length);
+            console.log("✅ Transcript via yt-dlp, length:", transcriptText.length);
         } catch (e: any) {
             console.warn("yt-dlp failed:", e.message);
             allErrors.push(`yt-dlp: ${e.message}`);
 
-            // Strategy 2: NPM packages fallback
+            // Strategy 2: NPM packages fallback (works on Vercel)
             try {
                 transcriptText = await fetchTranscriptWithNpm(videoId, videoUrl);
-                console.log("✅ Transcript fetched via NPM fallback, length:", transcriptText.length);
+                console.log("✅ Transcript via NPM fallback, length:", transcriptText.length);
             } catch (e2: any) {
                 allErrors.push(`NPM: ${e2.message}`);
             }
@@ -170,9 +160,10 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        console.log("Transcript extracted, length:", transcriptText.length);
+        // Get video title
+        const videoTitle = await getVideoTitle(videoUrl) || `Analysis: ${videoId}`;
 
-        // 2. AI Summarization with Groq SDK
+        // AI Summarization with Groq
         console.log("Calling Groq for summarization...");
         const chatCompletion = await groq.chat.completions.create({
             messages: [
@@ -199,16 +190,9 @@ export async function POST(req: NextRequest) {
         const summary = Array.isArray(content.summary) ? content.summary.join("\n") : content.summary;
         const studyNotes = Array.isArray(content.studyNotes) ? content.studyNotes.join("\n") : content.studyNotes;
 
-        console.log("AI summarization complete.");
+        console.log("✅ AI summarization complete.");
 
-        // 3. Get video title from yt-dlp
-        let videoTitle = `Analysis: ${videoId}`;
-        try {
-            const { stdout } = await execAsync(`yt-dlp --skip-download --print title "${videoUrl}"`, { timeout: 10000 });
-            videoTitle = stdout.trim() || videoTitle;
-        } catch { /* keep default title */ }
-
-        // 4. Save to DB
+        // Save to DB
         const note = await prisma.youTubeNote.create({
             data: {
                 videoUrl,
