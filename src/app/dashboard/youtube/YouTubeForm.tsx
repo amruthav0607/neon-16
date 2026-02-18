@@ -25,8 +25,8 @@ export default function YouTubeForm() {
             return;
         }
 
-        if (file.size > 10 * 1024 * 1024) {
-            setError("Image must be under 10MB");
+        if (file.size > 50 * 1024 * 1024) {
+            setError("Image must be under 50MB");
             return;
         }
 
@@ -263,7 +263,7 @@ export default function YouTubeForm() {
                                             Click to upload or paste screenshot
                                         </p>
                                         <p className="text-xs text-gray-500 mt-1">
-                                            PNG, JPG, WEBP up to 10MB
+                                            PNG, JPG, WEBP up to 50MB
                                         </p>
                                     </div>
                                     <input
