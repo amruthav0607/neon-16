@@ -1,17 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Youtube, Zap, Loader2, AlertCircle, ClipboardPaste, ChevronDown, ChevronUp } from "lucide-react";
+import { Youtube, Zap, Loader2, AlertCircle, ClipboardPaste, ChevronDown, ChevronUp, Link2, FileText, Sparkles } from "lucide-react";
 
 export default function YouTubeForm() {
     const [url, setUrl] = useState("");
     const [manualTranscript, setManualTranscript] = useState("");
-    const [showManualPaste, setShowManualPaste] = useState(false);
+    const [activeTab, setActiveTab] = useState<'link' | 'paste'>('link');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [result, setResult] = useState<any>(null);
-    const router = useRouter();
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -21,11 +19,20 @@ export default function YouTubeForm() {
 
         try {
             const body: any = {};
-            if (url.trim()) body.videoUrl = url;
-            if (manualTranscript.trim()) body.transcript = manualTranscript;
+            if (activeTab === 'link' && url.trim()) {
+                body.videoUrl = url;
+            }
+            if (activeTab === 'paste' && manualTranscript.trim()) {
+                body.transcript = manualTranscript;
+                if (url.trim()) body.videoUrl = url;
+            }
 
             if (!body.videoUrl && !body.transcript) {
-                throw new Error("Please enter a YouTube URL or paste a transcript.");
+                throw new Error(
+                    activeTab === 'link'
+                        ? "Please enter a YouTube URL."
+                        : "Please paste a transcript."
+                );
             }
 
             const res = await fetch("/api/ai/youtube", {
@@ -40,7 +47,6 @@ export default function YouTubeForm() {
             setResult(data);
             setUrl("");
             setManualTranscript("");
-            setShowManualPaste(false);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -49,117 +55,195 @@ export default function YouTubeForm() {
     }
 
     return (
-        <div className="backdrop-blur-xl bg-white/5 border border-white/10 p-8 md:p-10 rounded-[2rem] shadow-2xl mb-12">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <Youtube className="text-red-500 h-8 w-8" />
-                Analyze New Video
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {/* YouTube URL Input */}
-                <div className="relative">
-                    <input
-                        type="url"
-                        placeholder="Paste YouTube Video Link here (e.g., https://youtube.com/watch?v=...)"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        className="w-full px-6 py-5 bg-white/5 border border-white/10 rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none"
-                    />
+        <div className="space-y-6 sm:space-y-8">
+            {/* Main Form Card */}
+            <div className="backdrop-blur-xl bg-white/5 border border-white/10 p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[2rem] shadow-2xl">
+
+                {/* Tab Switcher */}
+                <div className="flex rounded-xl bg-white/5 p-1 mb-6 sm:mb-8">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('link')}
+                        className={`flex-1 flex items-center justify-center gap-2 py-3 sm:py-3.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${activeTab === 'link'
+                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <Link2 className="h-4 w-4" />
+                        <span>YouTube Link</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab('paste')}
+                        className={`flex-1 flex items-center justify-center gap-2 py-3 sm:py-3.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${activeTab === 'paste'
+                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/25'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <ClipboardPaste className="h-4 w-4" />
+                        <span>Paste Transcript</span>
+                    </button>
                 </div>
 
-                {/* Toggle Manual Transcript Paste */}
-                <button
-                    type="button"
-                    onClick={() => setShowManualPaste(!showManualPaste)}
-                    className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                    <ClipboardPaste className="h-4 w-4" />
-                    <span>{showManualPaste ? "Hide" : "Or paste transcript manually"}</span>
-                    {showManualPaste ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
+                <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
 
-                {/* Manual Transcript Paste Area */}
-                {showManualPaste && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-2xl">
-                            <p className="text-xs text-blue-300 mb-3 leading-relaxed">
-                                💡 <strong>How to get a transcript:</strong> Open the YouTube video → Click the <strong>&quot;...&quot;</strong> menu below the video → Click <strong>&quot;Show transcript&quot;</strong> → Copy all the text and paste it below.
+                    {/* Tab: YouTube Link */}
+                    {activeTab === 'link' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                    YouTube Video URL
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://youtube.com/watch?v=..."
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    className="w-full px-4 sm:px-6 py-4 sm:py-5 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none"
+                                />
+                            </div>
+                            <p className="text-xs text-gray-500 leading-relaxed">
+                                Supports youtube.com, youtu.be, and YouTube Shorts links
                             </p>
-                            <textarea
-                                placeholder="Paste the full YouTube transcript here..."
-                                value={manualTranscript}
-                                onChange={(e) => setManualTranscript(e.target.value)}
-                                rows={8}
-                                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none resize-y min-h-[120px]"
-                            />
-                            {manualTranscript.length > 0 && (
-                                <p className="text-xs text-gray-500 mt-2">
-                                    {manualTranscript.length} characters pasted
+                        </div>
+                    )}
+
+                    {/* Tab: Paste Transcript */}
+                    {activeTab === 'paste' && (
+                        <div className="space-y-4 animate-in fade-in duration-300">
+                            {/* Instructions */}
+                            <div className="p-3 sm:p-4 bg-purple-500/5 border border-purple-500/20 rounded-xl sm:rounded-2xl">
+                                <p className="text-xs sm:text-sm text-purple-300 leading-relaxed">
+                                    <span className="font-bold">📋 How to get the transcript:</span>
                                 </p>
+                                <div className="mt-2 space-y-1">
+                                    <p className="text-xs text-gray-400">
+                                        <span className="font-mono text-purple-400">Desktop:</span> Open video → Click <strong className="text-white">&quot;...&quot;</strong> below video → <strong className="text-white">&quot;Show transcript&quot;</strong>
+                                    </p>
+                                    <p className="text-xs text-gray-400">
+                                        <span className="font-mono text-purple-400">Mobile:</span> Open video → Tap <strong className="text-white">&quot;...more&quot;</strong> in description → Scroll to <strong className="text-white">&quot;Transcript&quot;</strong> section
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Optional URL */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                    Video URL <span className="text-gray-600 normal-case">(optional — for title)</span>
+                                </label>
+                                <input
+                                    type="url"
+                                    placeholder="https://youtube.com/watch?v=... (optional)"
+                                    value={url}
+                                    onChange={(e) => setUrl(e.target.value)}
+                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all outline-none"
+                                />
+                            </div>
+
+                            {/* Transcript textarea */}
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                                    Paste Transcript
+                                </label>
+                                <textarea
+                                    placeholder="Paste the full YouTube transcript text here..."
+                                    value={manualTranscript}
+                                    onChange={(e) => setManualTranscript(e.target.value)}
+                                    rows={6}
+                                    className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl text-sm text-white placeholder-gray-500 focus:bg-white/10 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 transition-all outline-none resize-y"
+                                    style={{ minHeight: '120px' }}
+                                />
+                                {manualTranscript.length > 0 && (
+                                    <div className="flex items-center justify-between mt-2">
+                                        <p className="text-xs text-gray-500">
+                                            {manualTranscript.length.toLocaleString()} characters
+                                        </p>
+                                        {manualTranscript.length < 50 && (
+                                            <p className="text-xs text-amber-400">
+                                                Need at least 50 characters
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Submit Button */}
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className={`w-full py-4 sm:py-5 rounded-xl sm:rounded-2xl font-bold text-sm transition-all transform hover:scale-[1.01] active:scale-95 shadow-xl flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed ${activeTab === 'link'
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+                                : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-500/20'
+                            }`}
+                    >
+                        {loading ? (
+                            <>
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                                <span>AI is analyzing...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="h-5 w-5" />
+                                Generate Study Notes
+                            </>
+                        )}
+                    </button>
+
+                    {/* Error Display */}
+                    {error && (
+                        <div className="p-3 sm:p-4 bg-red-500/10 border border-red-500/20 rounded-xl sm:rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-2">
+                            <div className="flex items-start gap-3">
+                                <AlertCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+                                <p className="text-xs sm:text-sm font-medium text-red-400">{error}</p>
+                            </div>
+                            {activeTab === 'link' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('paste')}
+                                    className="ml-8 text-xs text-purple-400 hover:text-purple-300 underline transition-colors"
+                                >
+                                    → Try pasting the transcript manually instead
+                                </button>
                             )}
                         </div>
-                    </div>
-                )}
-
-                {/* Submit Button */}
-                <button
-                    type="submit"
-                    disabled={loading || (!url.trim() && !manualTranscript.trim())}
-                    className="w-full py-5 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-500 transition-all transform hover:scale-[1.01] active:scale-95 shadow-xl shadow-blue-500/20 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {loading ? (
-                        <>
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                            <span>AI is processing{manualTranscript.trim() ? ' transcript' : ' video'}...</span>
-                        </>
-                    ) : (
-                        <>
-                            <Zap className="h-5 w-5" />
-                            Generate Study Notes
-                        </>
                     )}
-                </button>
+                </form>
+            </div>
 
-                {/* Error Display */}
-                {error && (
-                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
-                        <div className="flex items-center gap-3">
-                            <AlertCircle className="h-5 w-5 text-red-400 shrink-0" />
-                            <p className="text-sm font-medium text-red-400">{error}</p>
-                        </div>
-                        {!showManualPaste && error.includes("transcript") && (
-                            <button
-                                type="button"
-                                onClick={() => setShowManualPaste(true)}
-                                className="text-xs text-blue-400 hover:text-blue-300 underline transition-colors"
-                            >
-                                → Click here to paste the transcript manually instead
-                            </button>
-                        )}
-                    </div>
-                )}
-            </form>
-
-            {/* Results Display */}
+            {/* Results Card */}
             {result && (
-                <div className="mt-12 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                    <div className="flex items-center justify-between border-b border-white/10 pb-4">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <Zap className="h-5 w-5 text-blue-400" />
-                            {result.videoTitle || "Latest Analysis"}
+                <div className="backdrop-blur-xl bg-white/5 border border-white/10 p-5 sm:p-8 md:p-10 rounded-2xl sm:rounded-[2rem] shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-6 sm:mb-8">
+                        <Zap className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400 shrink-0" />
+                        <h3 className="text-lg sm:text-xl font-bold text-white truncate">
+                            {result.videoTitle || "Analysis Complete"}
                         </h3>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em]">Executive Summary</h4>
-                            <p className="text-gray-300 leading-relaxed text-sm bg-white/5 p-6 rounded-2xl border border-white/5">
-                                {result.summary}
-                            </p>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12">
+                        {/* Summary */}
+                        <div className="space-y-3 sm:space-y-4">
+                            <div className="flex items-center gap-2">
+                                <FileText className="h-4 w-4 text-blue-400" />
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.15em]">Executive Summary</h4>
+                            </div>
+                            <div className="bg-white/5 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-white/5">
+                                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
+                                    {result.summary}
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-4">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.2em]">Structured Study Notes</h4>
-                            <div className="bg-white/5 p-6 rounded-2xl border border-white/5 h-full">
-                                <div className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed prose prose-invert prose-sm max-w-none">
+
+                        {/* Study Notes */}
+                        <div className="space-y-3 sm:space-y-4">
+                            <div className="flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-purple-400" />
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-[0.15em]">Study Notes</h4>
+                            </div>
+                            <div className="bg-white/5 p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-white/5">
+                                <div className="text-xs sm:text-sm text-gray-300 whitespace-pre-wrap leading-relaxed prose prose-invert prose-sm max-w-none">
                                     {result.studyNotes}
                                 </div>
                             </div>
