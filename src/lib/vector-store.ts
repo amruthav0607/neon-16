@@ -1,6 +1,6 @@
 
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { PrismaVectorStore } from "@langchain/community/vectorstores/prisma";
 
 const prisma = new PrismaClient();
@@ -17,7 +17,7 @@ export const embeddings = new OpenAIEmbeddings({
 
 export const getVectorStore = () => {
     return PrismaVectorStore.withModel(prisma).create(embeddings, {
-        prisma: PrismaClient,
+        prisma: Prisma,
         tableName: "DocumentChunk",
         vectorColumnName: "embedding",
         columns: {
@@ -30,7 +30,7 @@ export const getVectorStore = () => {
 // Helper to embed and store chunks
 export async function indexDocument(documentId: string, content: string) {
     // 1. Chunk content (simple splitting for now, ideally use RecursiveCharacterTextSplitter)
-    const { RecursiveCharacterTextSplitter } = await import("langchain/text_splitter");
+    const { RecursiveCharacterTextSplitter } = await import("@langchain/textsplitters");
     const splitter = new RecursiveCharacterTextSplitter({
         chunkSize: 1000,
         chunkOverlap: 200,

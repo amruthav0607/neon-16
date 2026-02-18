@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
             context += "--- WORKSPACE DOCUMENTS ---\n";
             vectorResults.forEach((r, i) => {
                 context += `[${i + 1}] Document: ${r.metadata.documentName}\n${r.pageContent}\n\n`;
-                sources.push({ type: 'document', name: r.metadata.documentName, id: r.metadata.documentId });
+                sources.push({ type: 'document', name: r.metadata.documentName, id: r.metadata.documentId, content: r.pageContent });
             });
         }
 
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
                 webResults.forEach((r, i) => {
                     const citationIndex = sources.length + i + 1;
                     context += `[${citationIndex}] Web: ${r.title} (${r.url})\n${r.content.substring(0, 500)}...\n\n`;
-                    sources.push({ type: 'web', title: r.title, url: r.url });
+                    sources.push({ type: 'web', title: r.title, url: r.url, content: r.content });
                 });
             }
         }

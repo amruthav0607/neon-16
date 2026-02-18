@@ -113,6 +113,15 @@ export default function WorkspaceClient({ workspaces: initialWorkspaces, documen
         }
     };
 
+    const [chatHistory, setChatHistory] = useState<Record<string, any[]>>({});
+
+    const handleChatUpdate = (workspaceId: string, messages: any[]) => {
+        setChatHistory(prev => ({
+            ...prev,
+            [workspaceId]: messages
+        }));
+    };
+
     return (
         <div className="flex h-[calc(100vh-100px)] gap-6">
             {/* Sidebar */}
@@ -187,6 +196,8 @@ export default function WorkspaceClient({ workspaces: initialWorkspaces, documen
                         workspaceId={selectedWorkspaceId}
                         workspaceName={selectedWorkspace?.name || "Workspace"}
                         onClose={() => { }} // No close needed for main view
+                        initialMessages={chatHistory[selectedWorkspaceId] || []}
+                        onMessagesChange={(msgs) => handleChatUpdate(selectedWorkspaceId, msgs)}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-500">

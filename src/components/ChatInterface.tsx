@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Send, Bot, User, Loader2, Sparkles, Files } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Send, Bot, User, Loader2, Sparkles, Files, ArrowUpRight } from "lucide-react";
 
 interface Message {
     role: "user" | "assistant";
@@ -15,12 +15,34 @@ interface ChatInterfaceProps {
     workspaceId?: string;
     workspaceName?: string;
     onClose: () => void;
+    initialMessages?: Message[];
+    onMessagesChange?: (messages: Message[]) => void;
 }
 
-export default function ChatInterface({ documentId, documentName, workspaceId, workspaceName, onClose }: ChatInterfaceProps) {
-    const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatInterface({
+    documentId,
+    documentName,
+    workspaceId,
+    workspaceName,
+    onClose,
+    initialMessages = [],
+    onMessagesChange
+}: ChatInterfaceProps) {
+    const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+
+    // Update local state when initialMessages changes (e.g. switching workspaces)
+    useEffect(() => {
+        setMessages(initialMessages);
+    }, [initialMessages]);
+
+    const updateMessages = (newMessages: Message[]) => {
+        setMessages(newMessages);
+        onMessagesChange?.(newMessages);
+    };
+
+    const [selectedCitation, setSelectedCitation] = useState<any | null>(null);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -28,7 +50,9 @@ export default function ChatInterface({ documentId, documentName, workspaceId, w
 
         const userMessage = input;
         setInput("");
-        setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+
+        const newMessagesWithOptions = [...messages, { role: "user", content: userMessage } as Message];
+        updateMessages(newMessagesWithOptions);
         setIsLoading(true);
 
         try {
@@ -45,12 +69,12 @@ export default function ChatInterface({ documentId, documentName, workspaceId, w
             const data = await response.json();
 
             if (data.error) {
-                setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}` }]);
+                updateMessages([...newMessagesWithOptions, { role: "assistant", content: `Error: ${data.error}` }]);
             } else {
-                setMessages((prev) => [...prev, { role: "assistant", content: data.answer, sources: data.sources }]);
+                updateMessages([...newMessagesWithOptions, { role: "assistant", content: data.answer, sources: data.sources }]);
             }
         } catch (error) {
-            setMessages((prev) => [...prev, { role: "assistant", content: "Failed to connect to the server." }]);
+            updateMessages([...newMessagesWithOptions, { role: "assistant", content: "Failed to connect to the server." }]);
         } finally {
             setIsLoading(false);
         }
@@ -60,7 +84,7 @@ export default function ChatInterface({ documentId, documentName, workspaceId, w
     const isWorkspace = !!workspaceId;
 
     return (
-        <div className="flex flex-col h-full w-full bg-[#0a0a0a] overflow-hidden">
+        <div className="flex flex-col h-full w-full bg-[#0a0a0a] overflow-hidden relative">
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex justify-between items-center bg-white/5">
                 <div className="flex items-center gap-3">
@@ -114,16 +138,18 @@ export default function ChatInterface({ documentId, documentName, workspaceId, w
                                 <div className="text-xs text-gray-500 pl-2 space-y-1">
                                     <p className="font-semibold uppercase tracking-wider opacity-70 mb-1">Sources:</p>
                                     {m.sources.map((s: any, idx) => (
-                                        <div key={idx} className="flex items-center gap-2">
-                                            <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px]">{idx + 1}</span>
+                                        <button
+                                            key={idx}
+                                            onClick={() => setSelectedCitation(s)}
+                                            className="flex items-center gap-2 hover:bg-white/5 p-1 rounded transition-colors text-left w-full group"
+                                        >
+                                            <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px] group-hover:bg-blue-500 group-hover:text-white transition-colors">{idx + 1}</span>
                                             {s.type === 'web' ? (
-                                                <a href={s.url} target="_blank" rel="noopener noreferrer" className="hover:text-blue-400 underline decoration-white/20 hover:decoration-blue-400/50 truncate max-w-[300px]">
-                                                    {s.title}
-                                                </a>
+                                                <span className="truncate max-w-[300px] text-blue-400 underline decoration-blue-400/30 group-hover:decoration-blue-400">{s.title}</span>
                                             ) : (
-                                                <span className="truncate max-w-[300px]">{s.name}</span>
+                                                <span className="truncate max-w-[300px] text-gray-300 group-hover:text-white">{s.name}</span>
                                             )}
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
                             )}
@@ -159,6 +185,48 @@ export default function ChatInterface({ documentId, documentName, workspaceId, w
                     <Send className="h-5 w-5" />
                 </button>
             </form>
+
+            {/* Citation Viewer Modal */}
+            {selectedCitation && (
+                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+                    <div className="bg-[#1a1a1a] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl overflow-hidden">
+                        <div className="p-4 border-b border-white/10 flex items-center justify-between bg-white/5">
+                            <h3 className="font-bold text-white flex items-center gap-2 truncate">
+                                {selectedCitation.type === 'web' ? 'Web Source' : 'Document Source'}
+                                <span className="text-xs bg-white/10 text-gray-400 px-2 py-0.5 rounded-full font-normal truncate max-w-[200px]">
+                                    {selectedCitation.title || selectedCitation.name}
+                                </span>
+                            </h3>
+                            <button
+                                onClick={() => setSelectedCitation(null)}
+                                className="p-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto bg-[#111]">
+                            <p className="whitespace-pre-wrap text-gray-300 leading-relaxed font-mono text-sm">
+                                {selectedCitation.content || "No content available for this citation."}
+                            </p>
+
+                            {selectedCitation.type === 'web' && (
+                                <div className="mt-6 pt-6 border-t border-white/10">
+                                    <a
+                                        href={selectedCitation.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors text-sm"
+                                    >
+                                        Visit original URL
+                                        <ArrowUpRight className="h-3 w-3" />
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+
