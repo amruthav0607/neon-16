@@ -333,32 +333,44 @@ export async function POST(req: NextRequest) {
     }
 
     try {
-        const { videoUrl } = await req.json();
-        if (!videoUrl) {
-            return NextResponse.json({ error: "Video URL is required" }, { status: 400 });
+        const { videoUrl, transcript: manualTranscript } = await req.json();
+
+        // Allow either a URL or a manually pasted transcript
+        if (!videoUrl && !manualTranscript) {
+            return NextResponse.json({ error: "Video URL or transcript text is required" }, { status: 400 });
         }
 
-        const videoId = extractVideoId(videoUrl);
-        if (!videoId) {
-            return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
-        }
-
-        console.log("Processing video:", videoId);
-
-        // 1. Fetch transcript
         let transcriptText = "";
         let videoTitle = "";
+        let videoId = "";
 
-        try {
-            const result = await fetchTranscript(videoId);
-            transcriptText = result.transcript;
-            videoTitle = result.title || `YouTube Video ${videoId}`;
-        } catch (e: any) {
-            console.error("All transcript methods failed:", e.message);
-            return NextResponse.json({
-                error: "Failed to fetch transcript. The video might not have subtitles available.",
-                details: e.message
-            }, { status: 400 });
+        if (manualTranscript && manualTranscript.trim().length > 50) {
+            // Use manually pasted transcript
+            transcriptText = manualTranscript.trim();
+            videoId = videoUrl ? (extractVideoId(videoUrl) || 'manual') : 'manual';
+            videoTitle = videoUrl ? `Video ${videoId}` : 'Manual Transcript Analysis';
+            console.log("Using manually pasted transcript, length:", transcriptText.length);
+        } else if (videoUrl) {
+            videoId = extractVideoId(videoUrl) || '';
+            if (!videoId) {
+                return NextResponse.json({ error: "Invalid YouTube URL" }, { status: 400 });
+            }
+
+            console.log("Processing video:", videoId);
+
+            try {
+                const result = await fetchTranscript(videoId);
+                transcriptText = result.transcript;
+                videoTitle = result.title || `YouTube Video ${videoId}`;
+            } catch (e: any) {
+                console.error("All transcript methods failed:", e.message);
+                return NextResponse.json({
+                    error: "Failed to fetch transcript. Try pasting the transcript manually using the text box below.",
+                    details: e.message
+                }, { status: 400 });
+            }
+        } else {
+            return NextResponse.json({ error: "Transcript text is too short. Please paste at least a few sentences." }, { status: 400 });
         }
 
         if (transcriptText.length < 50) {
